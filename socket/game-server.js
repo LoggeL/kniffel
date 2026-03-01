@@ -15,6 +15,13 @@ function normalizeName(name) {
   return String(name || "").trim().slice(0, 24);
 }
 
+function normalizeIcon(icon) {
+  const s = String(icon || "").trim();
+  // Only allow single emoji / short strings (max 4 chars for compound emoji)
+  if (!s || s.length > 4) return null;
+  return s;
+}
+
 function normalizeCode(code) {
   return String(code || "")
     .trim()
@@ -120,6 +127,7 @@ function serializeRoom(room) {
     players: room.players.map((player) => ({
       id: player.id,
       name: player.name,
+      icon: player.icon || null,
       connected: player.connected,
       scores: player.scores,
       ...getScoreSummary(player.scores),
@@ -157,6 +165,7 @@ function registerGameHandlers(io) {
     socket.on("room:create", (payload = {}, ack) => {
       const name = normalizeName(payload.name);
       const incomingId = String(payload.clientId || "").trim();
+      const icon = normalizeIcon(payload.icon);
 
       if (!name) {
         sendError(socket, ack, "Bitte gib einen Namen ein.");
@@ -172,6 +181,7 @@ function registerGameHandlers(io) {
       const player = {
         id: incomingId,
         name,
+        icon,
         socketId: socket.id,
         connected: true,
         scores: createEmptyScores(),
@@ -200,6 +210,7 @@ function registerGameHandlers(io) {
       const code = normalizeCode(payload.code);
       const name = normalizeName(payload.name);
       const incomingId = String(payload.clientId || "").trim();
+      const icon = normalizeIcon(payload.icon);
       const room = getRoom(code);
 
       if (!room) {
@@ -238,10 +249,12 @@ function registerGameHandlers(io) {
         player.connected = true;
         player.socketId = socket.id;
         player.name = name;
+        if (icon) player.icon = icon;
       } else {
         player = {
           id: incomingId,
           name,
+          icon,
           socketId: socket.id,
           connected: true,
           scores: createEmptyScores(),
@@ -279,6 +292,10 @@ function registerGameHandlers(io) {
         if (maybeName) {
           player.name = maybeName;
         }
+      }
+      const reconnectIcon = normalizeIcon(payload.icon);
+      if (reconnectIcon) {
+        player.icon = reconnectIcon;
       }
 
       player.connected = true;

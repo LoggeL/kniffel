@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CATEGORIES,
   type Category,
@@ -10,10 +10,21 @@ import {
 import { getSocket } from "@/lib/socket";
 import type { AckResponse, PlayerState, RoomState } from "@/lib/types";
 import { DiceBox } from "@/components/dice-box";
+import {
+  playScoreEntry,
+  playKniffelFanfare,
+  playCelebration,
+} from "@/lib/sounds";
 
 const CLIENT_ID_KEY = "kniffel-client-id";
 const PLAYER_NAME_KEY = "kniffel-player-name";
 const ROOM_CODE_KEY = "kniffel-room-code";
+const PLAYER_ICON_KEY = "kniffel-player-icon";
+
+const ICON_CHOICES = [
+  "🐱", "🐶", "🦊", "🐼", "🐨", "🦁", "🐸", "🐧", "🦉", "🐝",
+  "🌟", "🔥", "💎", "🎲", "🎯", "🍀", "🌈", "⚡", "🎵", "🦄",
+];
 
 interface ScoreCategoryRow {
   category: Category;
@@ -49,10 +60,237 @@ function buildClientId(): string {
 }
 
 function findPlayer(room: RoomState | null, playerId: string): PlayerState | null {
-  if (!room) {
-    return null;
-  }
+  if (!room) return null;
   return room.players.find((player) => player.id === playerId) || null;
+}
+
+type CelebrationKind = "kniffel" | "fullHouse" | "largeStraight" | "bonus" | null;
+
+function detectCelebration(
+  category: Category,
+  dice: number[],
+  player: PlayerState | null
+): CelebrationKind {
+  if (category === "yahtzee") {
+    const counts = new Map<number, number>();
+    for (const d of dice) counts.set(d, (counts.get(d) || 0) + 1);
+    if ([...counts.values()].some((c) => c >= 5)) return "kniffel";
+  }
+  if (category === "fullHouse") {
+    const counts = new Map<number, number>();
+    for (const d of dice) counts.set(d, (counts.get(d) || 0) + 1);
+    const vals = [...counts.values()].sort((a, b) => a - b);
+    if (vals.length === 2 && vals[0] === 2 && vals[1] === 3) return "fullHouse";
+  }
+  if (category === "largeStraight") {
+    const unique = [...new Set(dice)].sort((a, b) => a - b);
+    if (unique.length === 5) {
+      const j = unique.join(",");
+      if (j === "1,2,3,4,5" || j === "2,3,4,5,6") return "largeStraight";
+    }
+  }
+  // Check if scoring this would push upper total to 63+
+  if (player && ["ones", "twos", "threes", "fours", "fives", "sixes"].includes(category)) {
+    const currentUpper = player.upperTotal;
+    const scoreVal = calculateCategoryScore(category, dice);
+    if (currentUpper < 63 && currentUpper + scoreVal >= 63) return "bonus";
+  }
+  return null;
+}
+
+function TulipDecoration() {
+  return (
+    <div className="pointer-events-none flex justify-center py-3 opacity-60">
+      <svg viewBox="0 0 200 80" width="200" height="80" aria-hidden="true">
+        {/* Left tulip */}
+        <g transform="translate(40,10)">
+          <path d="M0,45 Q-8,20 0,5 Q8,20 0,45Z" fill="#9b59b6" />
+          <path d="M0,45 Q-12,25 -5,8" fill="none" stroke="#8e44ad" strokeWidth="1" />
+          <path d="M0,45 Q12,25 5,8" fill="none" stroke="#8e44ad" strokeWidth="1" />
+          <path d="M-3,5 Q0,-3 3,5" fill="#7d3c98" />
+          <line x1="0" y1="45" x2="0" y2="70" stroke="#27ae60" strokeWidth="2.5" />
+          <path d="M0,55 Q-12,48 -18,52" fill="none" stroke="#27ae60" strokeWidth="1.8" />
+          <ellipse cx="-18" cy="52" rx="5" ry="3" fill="#2ecc71" transform="rotate(-15,-18,52)" />
+        </g>
+        {/* Center tulip */}
+        <g transform="translate(100,5)">
+          <path d="M0,50 Q-10,22 0,3 Q10,22 0,50Z" fill="#8e44ad" />
+          <path d="M0,50 Q-14,28 -6,8" fill="none" stroke="#7d3c98" strokeWidth="1.2" />
+          <path d="M0,50 Q14,28 6,8" fill="none" stroke="#7d3c98" strokeWidth="1.2" />
+          <path d="M-4,3 Q0,-5 4,3" fill="#6c3483" />
+          <line x1="0" y1="50" x2="0" y2="75" stroke="#27ae60" strokeWidth="2.5" />
+          <path d="M0,60 Q15,53 20,56" fill="none" stroke="#27ae60" strokeWidth="1.8" />
+          <ellipse cx="20" cy="56" rx="5" ry="3" fill="#2ecc71" transform="rotate(12,20,56)" />
+        </g>
+        {/* Right tulip */}
+        <g transform="translate(160,10)">
+          <path d="M0,45 Q-8,20 0,5 Q8,20 0,45Z" fill="#a569bd" />
+          <path d="M0,45 Q-12,25 -5,8" fill="none" stroke="#9b59b6" strokeWidth="1" />
+          <path d="M0,45 Q12,25 5,8" fill="none" stroke="#9b59b6" strokeWidth="1" />
+          <path d="M-3,5 Q0,-3 3,5" fill="#8e44ad" />
+          <line x1="0" y1="45" x2="0" y2="70" stroke="#27ae60" strokeWidth="2.5" />
+          <path d="M0,56 Q-14,50 -17,54" fill="none" stroke="#27ae60" strokeWidth="1.8" />
+          <ellipse cx="-17" cy="54" rx="5" ry="3" fill="#2ecc71" transform="rotate(-10,-17,54)" />
+        </g>
+      </svg>
+    </div>
+  );
+}
+
+function CelebrationOverlay({ kind, onDone }: { kind: CelebrationKind; onDone: () => void }) {
+  useEffect(() => {
+    const timeout = setTimeout(onDone, kind === "kniffel" ? 3000 : 2000);
+    return () => clearTimeout(timeout);
+  }, [kind, onDone]);
+
+  if (!kind) return null;
+
+  const configs: Record<
+    string,
+    { text: string; color: string; bg: string; particles: string }
+  > = {
+    kniffel: {
+      text: "KNIFFEL!",
+      color: "#ffd700",
+      bg: "radial-gradient(circle, rgba(255,215,0,0.3) 0%, transparent 70%)",
+      particles: "confetti",
+    },
+    fullHouse: {
+      text: "Full House!",
+      color: "#e74c3c",
+      bg: "radial-gradient(circle, rgba(231,76,60,0.2) 0%, transparent 70%)",
+      particles: "sparkle",
+    },
+    largeStraight: {
+      text: "Große Straße!",
+      color: "#3498db",
+      bg: "radial-gradient(circle, rgba(52,152,219,0.2) 0%, transparent 70%)",
+      particles: "rainbow",
+    },
+    bonus: {
+      text: "Bonus! +35",
+      color: "#f39c12",
+      bg: "radial-gradient(circle, rgba(243,156,18,0.2) 0%, transparent 70%)",
+      particles: "stars",
+    },
+  };
+
+  const cfg = configs[kind] || configs.kniffel;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="pointer-events-none fixed inset-0 z-[60] flex items-center justify-center"
+      style={{ background: cfg.bg }}
+    >
+      <motion.div
+        initial={{ scale: 0.3, opacity: 0, rotate: -10 }}
+        animate={{
+          scale: [0.3, 1.3, 1],
+          opacity: [0, 1, 1],
+          rotate: [-10, 5, 0],
+        }}
+        transition={{ duration: 0.6, times: [0, 0.6, 1] }}
+        className="text-center"
+      >
+        <div
+          className="text-5xl font-extrabold sm:text-7xl"
+          style={{
+            color: cfg.color,
+            textShadow: `0 0 30px ${cfg.color}80, 0 4px 12px rgba(0,0,0,0.3)`,
+            WebkitTextStroke: kind === "kniffel" ? "1px #b8860b" : "none",
+          }}
+        >
+          {cfg.text}
+        </div>
+        {kind === "kniffel" && (
+          <div className="mt-4 flex justify-center gap-2">
+            {Array.from({ length: 20 }).map((_, i) => (
+              <motion.div
+                key={i}
+                initial={{
+                  y: 0,
+                  x: 0,
+                  opacity: 1,
+                  scale: 1,
+                }}
+                animate={{
+                  y: [0, -(100 + Math.random() * 200), 300],
+                  x: [(Math.random() - 0.5) * 400, (Math.random() - 0.5) * 600],
+                  opacity: [1, 1, 0],
+                  scale: [1, 1.2, 0.5],
+                  rotate: [0, Math.random() * 720],
+                }}
+                transition={{
+                  duration: 2 + Math.random(),
+                  delay: Math.random() * 0.3,
+                }}
+                className="absolute h-3 w-3 rounded-sm"
+                style={{
+                  backgroundColor: ["#ff6b6b", "#ffd93d", "#6bcb77", "#4d96ff", "#ff6bff", "#ff9f43"][i % 6],
+                  left: `${30 + Math.random() * 40}%`,
+                  top: "50%",
+                }}
+              />
+            ))}
+          </div>
+        )}
+      </motion.div>
+    </motion.div>
+  );
+}
+
+function IconPicker({
+  selected,
+  onSelect,
+}: {
+  selected: string | null;
+  onSelect: (icon: string) => void;
+}) {
+  return (
+    <div className="mt-3">
+      <p className="mb-2 text-xs uppercase tracking-[0.18em] text-[#315e99]">Dein Icon</p>
+      <div className="grid grid-cols-10 gap-1.5">
+        {ICON_CHOICES.map((icon) => (
+          <button
+            key={icon}
+            type="button"
+            onClick={() => onSelect(icon)}
+            className={[
+              "flex h-9 w-9 items-center justify-center rounded-md border text-lg transition hover:scale-110",
+              selected === icon
+                ? "border-[#123f84] bg-[#dde7f7] shadow-sm"
+                : "border-[#2a4f89]/30 bg-[#f4e9d1]/60 hover:bg-[#e6d8bb]",
+            ].join(" ")}
+          >
+            {icon}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function BlurredScore({ value }: { value: number }) {
+  const [revealed, setRevealed] = useState(false);
+
+  return (
+    <span
+      onClick={() => setRevealed(!revealed)}
+      onMouseEnter={() => setRevealed(true)}
+      onMouseLeave={() => setRevealed(false)}
+      className="cursor-pointer select-none transition-all duration-300"
+      style={{
+        filter: revealed ? "none" : "blur(8px)",
+        opacity: revealed ? 1 : 0.7,
+      }}
+      title="Klick zum Aufdecken"
+    >
+      {value}
+    </span>
+  );
 }
 
 export function KniffelApp() {
@@ -64,27 +302,40 @@ export function KniffelApp() {
   const [room, setRoom] = useState<RoomState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
+  const [selectedIcon, setSelectedIcon] = useState<string | null>(null);
+  const [celebration, setCelebration] = useState<CelebrationKind>(null);
+
+  // Track previous rollSequence to keep dice in place after scoring
+  const prevRollSeqRef = useRef(0);
+  const displayRollSeq = useRef(0);
+
+  useEffect(() => {
+    if (!room) return;
+    // Only update display roll sequence when server actually rolls
+    if (room.turn.rollSequence !== prevRollSeqRef.current && room.turn.rollSequence > 0) {
+      displayRollSeq.current = room.turn.rollSequence;
+    }
+    prevRollSeqRef.current = room.turn.rollSequence;
+  }, [room?.turn.rollSequence, room]);
 
   useEffect(() => {
     const savedClientId = localStorage.getItem(CLIENT_ID_KEY) || buildClientId();
     const savedName = localStorage.getItem(PLAYER_NAME_KEY) || "";
     const savedRoomCode = (localStorage.getItem(ROOM_CODE_KEY) || "").toUpperCase();
+    const savedIcon = localStorage.getItem(PLAYER_ICON_KEY) || null;
 
     localStorage.setItem(CLIENT_ID_KEY, savedClientId);
     setClientId(savedClientId);
     setName(savedName);
     setCodeInput(savedRoomCode);
+    if (savedIcon) setSelectedIcon(savedIcon);
 
     const onConnect = () => {
       setConnected(true);
-
-      if (!savedRoomCode) {
-        return;
-      }
-
+      if (!savedRoomCode) return;
       socket.emit(
         "room:reconnect",
-        { code: savedRoomCode, clientId: savedClientId, name: savedName },
+        { code: savedRoomCode, clientId: savedClientId, name: savedName, icon: savedIcon },
         (ack: AckResponse) => {
           if (!ack?.ok) {
             localStorage.removeItem(ROOM_CODE_KEY);
@@ -94,24 +345,17 @@ export function KniffelApp() {
       );
     };
 
-    const onDisconnect = () => {
-      setConnected(false);
-    };
-
+    const onDisconnect = () => setConnected(false);
     const onRoomUpdate = (incoming: RoomState) => {
       setRoom(incoming);
       localStorage.setItem(ROOM_CODE_KEY, incoming.code);
     };
-
-    const onActionError = (message: string) => {
-      setError(message);
-    };
+    const onActionError = (message: string) => setError(message);
 
     socket.on("connect", onConnect);
     socket.on("disconnect", onDisconnect);
     socket.on("room:update", onRoomUpdate);
     socket.on("action:error", onActionError);
-
     socket.connect();
 
     return () => {
@@ -123,19 +367,15 @@ export function KniffelApp() {
   }, [socket]);
 
   useEffect(() => {
-    if (!error) {
-      return;
-    }
+    if (!error) return;
     const timer = setTimeout(() => setError(null), 3500);
     return () => clearTimeout(timer);
   }, [error]);
 
   const me = useMemo(() => findPlayer(room, clientId), [room, clientId]);
   const currentPlayer = useMemo(() => {
-    if (!room?.currentPlayerId) {
-      return null;
-    }
-    return room.players.find((player) => player.id === room.currentPlayerId) || null;
+    if (!room?.currentPlayerId) return null;
+    return room.players.find((p) => p.id === room.currentPlayerId) || null;
   }, [room]);
 
   const isHost = Boolean(room && clientId && room.hostId === clientId);
@@ -144,31 +384,20 @@ export function KniffelApp() {
 
   const scorePreview = useMemo(() => {
     const preview: Partial<Record<Category, number>> = {};
-
-    if (!room || !me || !isMyTurn || room.turn.rollsUsed === 0) {
-      return preview;
-    }
-
+    if (!room || !me || !isMyTurn || room.turn.rollsUsed === 0) return preview;
     for (const category of CATEGORIES) {
-      if (typeof me.scores[category] === "number") {
-        continue;
-      }
+      if (typeof me.scores[category] === "number") continue;
       preview[category] = calculateCategoryScore(category, room.turn.dice);
     }
-
     return preview;
   }, [room, me, isMyTurn]);
 
   const winnerText = useMemo(() => {
-    if (!room || room.status !== "finished" || room.winnerIds.length === 0) {
-      return "";
-    }
-
-    const names = room.winnerIds
-      .map((winnerId) => room.players.find((player) => player.id === winnerId)?.name)
-      .filter(Boolean);
-
-    return names.join(", ");
+    if (!room || room.status !== "finished" || room.winnerIds.length === 0) return "";
+    return room.winnerIds
+      .map((id) => room.players.find((p) => p.id === id)?.name)
+      .filter(Boolean)
+      .join(", ");
   }, [room]);
 
   const requireName = (): string | null => {
@@ -182,16 +411,9 @@ export function KniffelApp() {
   };
 
   const ensureClientId = (): string => {
-    if (clientId) {
-      return clientId;
-    }
-
+    if (clientId) return clientId;
     const stored = localStorage.getItem(CLIENT_ID_KEY);
-    if (stored) {
-      setClientId(stored);
-      return stored;
-    }
-
+    if (stored) { setClientId(stored); return stored; }
     const generated = buildClientId();
     localStorage.setItem(CLIENT_ID_KEY, generated);
     setClientId(generated);
@@ -203,16 +425,18 @@ export function KniffelApp() {
     setRoom(null);
   };
 
+  const handleSelectIcon = (icon: string) => {
+    setSelectedIcon(icon);
+    localStorage.setItem(PLAYER_ICON_KEY, icon);
+  };
+
   const handleCreateRoom = () => {
     const trimmedName = requireName();
-    if (!trimmedName) {
-      return;
-    }
+    if (!trimmedName) return;
     const ensuredClientId = ensureClientId();
-
     socket.emit(
       "room:create",
-      { name: trimmedName, clientId: ensuredClientId },
+      { name: trimmedName, clientId: ensuredClientId, icon: selectedIcon },
       (ack: AckResponse) => {
         if (!ack?.ok || !ack.code) {
           setError(ack?.error || "Raum konnte nicht erstellt werden.");
@@ -225,20 +449,13 @@ export function KniffelApp() {
 
   const handleJoinRoom = () => {
     const trimmedName = requireName();
-    if (!trimmedName) {
-      return;
-    }
+    if (!trimmedName) return;
     const ensuredClientId = ensureClientId();
-
     const code = codeInput.trim().toUpperCase();
-    if (!code) {
-      setError("Bitte gib einen Raumcode ein.");
-      return;
-    }
-
+    if (!code) { setError("Bitte gib einen Raumcode ein."); return; }
     socket.emit(
       "room:join",
-      { code, name: trimmedName, clientId: ensuredClientId },
+      { code, name: trimmedName, clientId: ensuredClientId, icon: selectedIcon },
       (ack: AckResponse) => {
         if (!ack?.ok || !ack.code) {
           setError(ack?.error || "Raum konnte nicht betreten werden.");
@@ -250,76 +467,110 @@ export function KniffelApp() {
   };
 
   const handleLeaveRoom = () => {
-    if (!room) {
-      clearRoomState();
-      return;
-    }
-
+    if (!room) { clearRoomState(); return; }
     socket.emit("room:leave", { code: room.code }, (ack: AckResponse) => {
-      if (!ack?.ok) {
-        setError(ack?.error || "Raum konnte nicht verlassen werden.");
-        return;
-      }
+      if (!ack?.ok) { setError(ack?.error || "Raum konnte nicht verlassen werden."); return; }
       clearRoomState();
     });
   };
 
   const handleStartGame = () => {
-    if (!room) {
-      return;
-    }
+    if (!room) return;
     socket.emit("game:start", { code: room.code }, (ack: AckResponse) => {
-      if (!ack?.ok) {
-        setError(ack?.error || "Spiel konnte nicht gestartet werden.");
-      }
+      if (!ack?.ok) setError(ack?.error || "Spiel konnte nicht gestartet werden.");
     });
   };
 
   const handleRoll = () => {
-    if (!room) {
-      return;
-    }
+    if (!room) return;
     socket.emit("game:roll", { code: room.code }, (ack: AckResponse) => {
-      if (!ack?.ok) {
-        setError(ack?.error || "Wurf fehlgeschlagen.");
-      }
+      if (!ack?.ok) setError(ack?.error || "Wurf fehlgeschlagen.");
     });
   };
 
   const handleToggleHold = (index: number) => {
-    if (!room) {
-      return;
-    }
+    if (!room) return;
     socket.emit("game:toggleHold", { code: room.code, index }, (ack: AckResponse) => {
-      if (!ack?.ok) {
-        setError(ack?.error || "Wuerfel konnte nicht gehalten werden.");
-      }
+      if (!ack?.ok) setError(ack?.error || "Wuerfel konnte nicht gehalten werden.");
     });
   };
 
   const handleScore = (category: Category) => {
-    if (!room) {
-      return;
-    }
-
+    if (!room) return;
+    // Detect celebration before scoring
+    const celebKind = detectCelebration(category, room.turn.dice, me);
     socket.emit("game:score", { code: room.code, category }, (ack: AckResponse) => {
       if (!ack?.ok) {
         setError(ack?.error || "Punkte konnten nicht eingetragen werden.");
+        return;
+      }
+      playScoreEntry();
+      if (celebKind === "kniffel") {
+        playKniffelFanfare();
+        setCelebration("kniffel");
+      } else if (celebKind) {
+        playCelebration();
+        setCelebration(celebKind);
       }
     });
   };
 
   const copyCode = async () => {
-    if (!room) {
-      return;
-    }
-
+    if (!room) return;
     try {
       await navigator.clipboard.writeText(room.code);
       setError("Raumcode kopiert.");
     } catch {
       setError("Kopieren nicht verfuegbar.");
     }
+  };
+
+  const renderScoreCell = (
+    player: PlayerState,
+    row: ScoreCategoryRow
+  ) => {
+    const score = player.scores[row.category];
+    const isMyCell = player.id === clientId;
+    const previewValue = scorePreview[row.category];
+    const allowScore =
+      room?.status === "playing" &&
+      isMyTurn &&
+      isMyCell &&
+      typeof score !== "number" &&
+      typeof previewValue === "number";
+
+    return (
+      <td
+        key={`${player.id}-${row.category}`}
+        className={[
+          "border border-[#2a4f89]/65 px-3 py-2 text-center",
+          room?.currentPlayerId === player.id ? "bg-[#e5efff]" : "bg-[#f7ecd8]",
+        ].join(" ")}
+      >
+        {typeof score === "number" && (
+          <span
+            className={[
+              "font-bold",
+              score === 0 ? "text-[#b52f2f] line-through decoration-2" : "text-[#123f84]",
+            ].join(" ")}
+          >
+            {score}
+          </span>
+        )}
+        {allowScore && (
+          <button
+            type="button"
+            onClick={() => handleScore(row.category)}
+            className="rounded-md border border-[#7c8ba5]/70 bg-[#dbe4ee]/65 px-2 py-1 text-xs font-semibold text-[#4a5972] transition hover:bg-[#ced8e6]"
+          >
+            {previewValue}
+          </button>
+        )}
+        {typeof score !== "number" && !allowScore && (
+          <span className="text-[#8a94a8]/80">-</span>
+        )}
+      </td>
+    );
   };
 
   return (
@@ -351,10 +602,16 @@ export function KniffelApp() {
           </div>
         </header>
 
-        {error && <div className="rounded-lg border border-[#2a4f89]/50 bg-[#ecddbf] px-4 py-2 text-sm text-[#214c8f]">{error}</div>}
+        {error && (
+          <div className="rounded-lg border border-[#2a4f89]/50 bg-[#ecddbf] px-4 py-2 text-sm text-[#214c8f]">
+            {error}
+          </div>
+        )}
 
         {!room && (
-          <section className="mx-auto grid w-full max-w-3xl gap-4 rounded-[28px] border-2 border-[#2a4f89]/70 bg-[#f6ecd6]/90 p-5 shadow-[0_28px_60px_-46px_rgba(15,23,42,0.95)] backdrop-blur sm:grid-cols-2 sm:p-8">
+          <section className="mx-auto grid w-full max-w-3xl gap-4 rounded-[28px] border-2 border-[#2a4f89]/70 bg-[#f6ecd6]/90 p-5 shadow-[0_28px_60px_-46px_rgba(15,23,42,0.95)] backdrop-blur sm:p-8">
+            <TulipDecoration />
+
             <div className="sm:col-span-2">
               <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-[#315e99]" htmlFor="name-input">
                 Dein Name
@@ -369,29 +626,33 @@ export function KniffelApp() {
               />
             </div>
 
-            <button
-              type="button"
-              onClick={handleCreateRoom}
-              className="rounded-md border border-[#2a4f89]/70 bg-[#e6d8ba] px-4 py-3 font-semibold uppercase tracking-[0.08em] text-[#123f84] transition hover:bg-[#ddcfaf]"
-            >
-              Raum erstellen
-            </button>
+            <IconPicker selected={selectedIcon} onSelect={handleSelectIcon} />
 
-            <div className="flex gap-2">
-              <input
-                value={codeInput}
-                onChange={(event) => setCodeInput(event.target.value.toUpperCase())}
-                maxLength={6}
-                placeholder="Code"
-                className="w-full border-0 border-b-2 border-[#2a4f89]/55 bg-transparent px-1 py-2 text-lg uppercase tracking-[0.2em] text-[#123f84] outline-none transition placeholder:tracking-normal placeholder:text-[#6481ad] focus:border-[#123f84]"
-              />
+            <div className="grid gap-4 sm:grid-cols-2">
               <button
                 type="button"
-                onClick={handleJoinRoom}
-                className="rounded-md border border-[#2a4f89]/70 bg-[#dde7f7] px-4 py-3 font-semibold uppercase tracking-[0.08em] text-[#123f84] transition hover:bg-[#cfddf4]"
+                onClick={handleCreateRoom}
+                className="rounded-md border border-[#2a4f89]/70 bg-[#e6d8ba] px-4 py-3 font-semibold uppercase tracking-[0.08em] text-[#123f84] transition hover:bg-[#ddcfaf]"
               >
-                Join
+                Raum erstellen
               </button>
+
+              <div className="flex gap-2">
+                <input
+                  value={codeInput}
+                  onChange={(event) => setCodeInput(event.target.value.toUpperCase())}
+                  maxLength={6}
+                  placeholder="Code"
+                  className="w-full border-0 border-b-2 border-[#2a4f89]/55 bg-transparent px-1 py-2 text-lg uppercase tracking-[0.2em] text-[#123f84] outline-none transition placeholder:tracking-normal placeholder:text-[#6481ad] focus:border-[#123f84]"
+                />
+                <button
+                  type="button"
+                  onClick={handleJoinRoom}
+                  className="rounded-md border border-[#2a4f89]/70 bg-[#dde7f7] px-4 py-3 font-semibold uppercase tracking-[0.08em] text-[#123f84] transition hover:bg-[#cfddf4]"
+                >
+                  Join
+                </button>
+              </div>
             </div>
           </section>
         )}
@@ -414,16 +675,13 @@ export function KniffelApp() {
                   </button>
                 </div>
               </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleLeaveRoom}
-                  className="rounded-md border border-[#2a4f89]/65 bg-[#e8d8b7] px-3 py-2 text-sm text-[#123f84] transition hover:bg-[#ddcba8]"
-                >
-                  Raum verlassen
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={handleLeaveRoom}
+                className="rounded-md border border-[#2a4f89]/65 bg-[#e8d8b7] px-3 py-2 text-sm text-[#123f84] transition hover:bg-[#ddcba8]"
+              >
+                Raum verlassen
+              </button>
             </div>
 
             {room.status === "lobby" && (
@@ -440,6 +698,7 @@ export function KniffelApp() {
                         className="flex items-center justify-between rounded-md border border-[#2a4f89]/45 bg-[#efe1c2] px-3 py-2"
                       >
                         <div className="flex items-center gap-2">
+                          {player.icon && <span className="text-lg">{player.icon}</span>}
                           <span className="font-medium text-[#123f84]">{player.name}</span>
                           {player.id === room.hostId && (
                             <span className="rounded-full border border-[#2a4f89]/45 bg-[#d7e5fb] px-2 py-0.5 text-xs text-[#123f84]">
@@ -453,10 +712,7 @@ export function KniffelApp() {
                           )}
                         </div>
                         <span
-                          className={[
-                            "text-xs",
-                            player.connected ? "text-[#1f5aab]" : "text-[#6f86ad]",
-                          ].join(" ")}
+                          className={["text-xs", player.connected ? "text-[#1f5aab]" : "text-[#6f86ad]"].join(" ")}
                         >
                           {player.connected ? "online" : "offline"}
                         </span>
@@ -522,7 +778,7 @@ export function KniffelApp() {
                     dice={room.turn.dice}
                     held={room.turn.held}
                     disabled={!isMyTurn || room.turn.rollsUsed === 0 || room.status !== "playing"}
-                    rollSequence={room.turn.rollSequence}
+                    rollSequence={displayRollSeq.current}
                     onToggleHold={handleToggleHold}
                   />
 
@@ -572,7 +828,10 @@ export function KniffelApp() {
                                     : "bg-[#e6d8ba] text-[#1d4a89]",
                                 ].join(" ")}
                               >
-                                {player.name}
+                                <span className="flex items-center justify-center gap-1">
+                                  {player.icon && <span className="text-sm">{player.icon}</span>}
+                                  {player.name}
+                                </span>
                               </th>
                             ))}
                           </tr>
@@ -599,61 +858,13 @@ export function KniffelApp() {
                                   </div>
                                 </div>
                               </td>
-
-                              {room.players.map((player) => {
-                                const score = player.scores[row.category];
-                                const isMyCell = player.id === clientId;
-                                const previewValue = scorePreview[row.category];
-                                const allowScore =
-                                  room.status === "playing" &&
-                                  isMyTurn &&
-                                  isMyCell &&
-                                  typeof score !== "number" &&
-                                  typeof previewValue === "number";
-
-                                return (
-                                  <td
-                                    key={`${player.id}-${row.category}`}
-                                    className={[
-                                      "border border-[#2a4f89]/65 px-3 py-2 text-center",
-                                      room.currentPlayerId === player.id ? "bg-[#e5efff]" : "bg-[#f7ecd8]",
-                                    ].join(" ")}
-                                  >
-                                    {typeof score === "number" && (
-                                      <span
-                                        className={[
-                                          "font-bold",
-                                          score === 0
-                                            ? "text-[#b52f2f] line-through decoration-2"
-                                            : "text-[#123f84]",
-                                        ].join(" ")}
-                                      >
-                                        {score}
-                                      </span>
-                                    )}
-
-                                    {allowScore && (
-                                      <button
-                                        type="button"
-                                        onClick={() => handleScore(row.category)}
-                                        className="rounded-md border border-[#7c8ba5]/70 bg-[#dbe4ee]/65 px-2 py-1 text-xs font-semibold text-[#4a5972] transition hover:bg-[#ced8e6]"
-                                      >
-                                        {previewValue}
-                                      </button>
-                                    )}
-
-                                    {typeof score !== "number" && !allowScore && (
-                                      <span className="text-[#8a94a8]/80">-</span>
-                                    )}
-                                  </td>
-                                );
-                              })}
+                              {room.players.map((player) => renderScoreCell(player, row))}
                             </tr>
                           ))}
 
                           <tr>
                             <td className="sticky left-0 z-20 border border-[#2a4f89]/65 bg-[#ece0c5] px-3 py-2 font-semibold text-[#184587]">
-                              Gesamt oberer Teil →
+                              Gesamt oberer Teil &rarr;
                             </td>
                             {room.players.map((player) => (
                               <td
@@ -670,7 +881,7 @@ export function KniffelApp() {
 
                           <tr>
                             <td className="sticky left-0 z-20 border border-[#2a4f89]/65 bg-[#ece0c5] px-3 py-2 text-sm text-[#1f4f93]">
-                              Bonus bei 63 oder mehr = 35 →
+                              Bonus bei 63 oder mehr = 35 &rarr;
                             </td>
                             {room.players.map((player) => (
                               <td
@@ -719,55 +930,7 @@ export function KniffelApp() {
                                   <div className="text-xs text-[#355d98]">{row.description}</div>
                                 </div>
                               </td>
-
-                              {room.players.map((player) => {
-                                const score = player.scores[row.category];
-                                const isMyCell = player.id === clientId;
-                                const previewValue = scorePreview[row.category];
-                                const allowScore =
-                                  room.status === "playing" &&
-                                  isMyTurn &&
-                                  isMyCell &&
-                                  typeof score !== "number" &&
-                                  typeof previewValue === "number";
-
-                                return (
-                                  <td
-                                    key={`${player.id}-${row.category}`}
-                                    className={[
-                                      "border border-[#2a4f89]/65 px-3 py-2 text-center",
-                                      room.currentPlayerId === player.id ? "bg-[#e5efff]" : "bg-[#f7ecd8]",
-                                    ].join(" ")}
-                                  >
-                                    {typeof score === "number" && (
-                                      <span
-                                        className={[
-                                          "font-bold",
-                                          score === 0
-                                            ? "text-[#b52f2f] line-through decoration-2"
-                                            : "text-[#123f84]",
-                                        ].join(" ")}
-                                      >
-                                        {score}
-                                      </span>
-                                    )}
-
-                                    {allowScore && (
-                                      <button
-                                        type="button"
-                                        onClick={() => handleScore(row.category)}
-                                        className="rounded-md border border-[#7c8ba5]/70 bg-[#dbe4ee]/65 px-2 py-1 text-xs font-semibold text-[#4a5972] transition hover:bg-[#ced8e6]"
-                                      >
-                                        {previewValue}
-                                      </button>
-                                    )}
-
-                                    {typeof score !== "number" && !allowScore && (
-                                      <span className="text-[#8a94a8]/80">-</span>
-                                    )}
-                                  </td>
-                                );
-                              })}
+                              {room.players.map((player) => renderScoreCell(player, row))}
                             </tr>
                           ))}
 
@@ -790,7 +953,7 @@ export function KniffelApp() {
 
                           <tr>
                             <td className="sticky left-0 z-20 border border-[#2a4f89]/65 bg-[#e3d4b4] px-3 py-2 font-semibold text-[#123f84]">
-                              Gesamt oberer Teil (Übertrag)
+                              Gesamt oberer Teil (Uebertrag)
                             </td>
                             {room.players.map((player) => (
                               <td
@@ -817,7 +980,7 @@ export function KniffelApp() {
                                   room.currentPlayerId === player.id ? "bg-[#cdddf4]" : "bg-[#e7d5b2]",
                                 ].join(" ")}
                               >
-                                {player.total}
+                                <BlurredScore value={player.total} />
                               </td>
                             ))}
                           </tr>
@@ -831,6 +994,12 @@ export function KniffelApp() {
           </section>
         )}
       </div>
+
+      <AnimatePresence>
+        {celebration && (
+          <CelebrationOverlay kind={celebration} onDone={() => setCelebration(null)} />
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {room?.status === "finished" && (
@@ -861,7 +1030,10 @@ export function KniffelApp() {
                       key={player.id}
                       className="flex items-center justify-between rounded-md border border-[#2a4f89]/50 bg-[#ebddbe] px-3 py-2"
                     >
-                      <span className="text-[#123f84]">{player.name}</span>
+                      <span className="flex items-center gap-2 text-[#123f84]">
+                        {player.icon && <span>{player.icon}</span>}
+                        {player.name}
+                      </span>
                       <span className="font-semibold text-[#1f5aab]">{player.total}</span>
                     </div>
                   ))}

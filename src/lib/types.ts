@@ -5,6 +5,7 @@ export type ScoreMap = Record<Category, number | null>;
 export interface PlayerState {
   id: string;
   name: string;
+  icon: string | null;
   connected: boolean;
   scores: ScoreMap;
   upperTotal: number;
