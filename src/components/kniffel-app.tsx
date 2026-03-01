@@ -4,7 +4,6 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
 import {
   CATEGORIES,
-  CATEGORY_LABELS,
   type Category,
   calculateCategoryScore,
 } from "@/lib/kniffel";
@@ -15,6 +14,32 @@ import { DiceBox } from "@/components/dice-box";
 const CLIENT_ID_KEY = "kniffel-client-id";
 const PLAYER_NAME_KEY = "kniffel-player-name";
 const ROOM_CODE_KEY = "kniffel-room-code";
+
+interface ScoreCategoryRow {
+  category: Category;
+  label: string;
+  icon?: string;
+  description: string;
+}
+
+const UPPER_SCORE_ROWS: ScoreCategoryRow[] = [
+  { category: "ones", label: "Einser", icon: "⚀", description: "nur Einser zählen" },
+  { category: "twos", label: "Zweier", icon: "⚁", description: "nur Zweier zählen" },
+  { category: "threes", label: "Dreier", icon: "⚂", description: "nur Dreier zählen" },
+  { category: "fours", label: "Vierer", icon: "⚃", description: "nur Vierer zählen" },
+  { category: "fives", label: "Fünfer", icon: "⚄", description: "nur Fünfer zählen" },
+  { category: "sixes", label: "Sechser", icon: "⚅", description: "nur Sechser zählen" },
+];
+
+const LOWER_SCORE_ROWS: ScoreCategoryRow[] = [
+  { category: "threeOfAKind", label: "Dreierpasch", description: "Alle Augen zählen" },
+  { category: "fourOfAKind", label: "Viererpasch", description: "Alle Augen zählen" },
+  { category: "fullHouse", label: "Full House", description: "25 Punkte" },
+  { category: "smallStraight", label: "Kleine Straße", description: "30 Punkte" },
+  { category: "largeStraight", label: "Große Straße", description: "40 Punkte" },
+  { category: "yahtzee", label: "Kniffel (5 gleiche)", description: "50 Punkte" },
+  { category: "chance", label: "Chance", description: "Alle Augen zählen" },
+];
 
 function buildClientId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -457,8 +482,8 @@ export function KniffelApp() {
             )}
 
             {room.status !== "lobby" && (
-              <div className="grid gap-4 xl:grid-cols-[360px_1fr]">
-                <aside className="flex flex-col gap-4">
+              <div className="flex flex-col gap-4">
+                <div className="grid gap-4 lg:grid-cols-[1fr_auto]">
                   <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
                     <p className="text-sm text-slate-300">
                       Runde {Math.max(room.currentRound, 1)} / {room.maxRounds}
@@ -475,135 +500,328 @@ export function KniffelApp() {
                     )}
                   </div>
 
-                  <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
-                    <h3 className="text-sm uppercase tracking-[0.16em] text-slate-400">Wuerfel</h3>
-                    <DiceBox
-                      dice={room.turn.dice}
-                      held={room.turn.held}
-                      disabled={!isMyTurn || room.turn.rollsUsed === 0 || room.status !== "playing"}
-                      rollSequence={room.turn.rollSequence}
-                      onToggleHold={handleToggleHold}
-                    />
-
-                    <div className="mt-4 flex items-center justify-between text-sm text-slate-300">
-                      <span>Wuerfe: {room.turn.rollsUsed} / 3</span>
-                      <span>Verbleibend: {room.turn.rollsLeft}</span>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={handleRoll}
-                      disabled={!canRoll || room.status !== "playing"}
-                      className={[
-                        "mt-4 w-full rounded-xl border px-4 py-3 font-semibold transition",
-                        canRoll && room.status === "playing"
-                          ? "border-amber-400/60 bg-amber-400/20 text-amber-100 hover:bg-amber-400/30"
-                          : "cursor-not-allowed border-slate-700 bg-slate-800/70 text-slate-500",
-                      ].join(" ")}
-                    >
-                      Wuerfeln
-                    </button>
+                  <div className="rounded-2xl border border-slate-800 bg-slate-900/70 px-4 py-3">
+                    <p className="text-xs uppercase tracking-[0.14em] text-slate-400">Spieler</p>
+                    <p className="mt-1 text-sm text-slate-200">
+                      {room.players.length} Teilnehmer · {room.maxRounds} Runden
+                    </p>
                   </div>
-                </aside>
+                </div>
 
                 <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full border-separate border-spacing-0 text-sm">
-                      <thead>
-                        <tr>
-                          <th className="sticky left-0 z-10 border-b border-slate-700 bg-slate-900 px-3 py-2 text-left font-medium text-slate-300">
-                            Kategorie
-                          </th>
-                          {room.players.map((player) => (
-                            <th
-                              key={player.id}
-                              className={[
-                                "border-b border-slate-700 px-3 py-2 text-left font-medium",
-                                room.currentPlayerId === player.id ? "text-cyan-200" : "text-slate-200",
-                              ].join(" ")}
-                            >
-                              {player.name}
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <h3 className="text-sm uppercase tracking-[0.16em] text-slate-400">Wuerfel</h3>
+                    <div className="text-sm text-slate-300">
+                      Wuerfe: {room.turn.rollsUsed} / 3 · Verbleibend: {room.turn.rollsLeft}
+                    </div>
+                  </div>
+
+                  <DiceBox
+                    dice={room.turn.dice}
+                    held={room.turn.held}
+                    disabled={!isMyTurn || room.turn.rollsUsed === 0 || room.status !== "playing"}
+                    rollSequence={room.turn.rollSequence}
+                    onToggleHold={handleToggleHold}
+                  />
+
+                  <button
+                    type="button"
+                    onClick={handleRoll}
+                    disabled={!canRoll || room.status !== "playing"}
+                    className={[
+                      "mt-4 w-full rounded-xl border px-4 py-3 font-semibold transition",
+                      canRoll && room.status === "playing"
+                        ? "border-amber-400/60 bg-amber-400/20 text-amber-100 hover:bg-amber-400/30"
+                        : "cursor-not-allowed border-slate-700 bg-slate-800/70 text-slate-500",
+                    ].join(" ")}
+                  >
+                    Wuerfeln
+                  </button>
+                </div>
+
+                <div
+                  className="rounded-[30px] border border-[#204b88]/70 bg-[#efe2c5] p-3 shadow-[0_30px_75px_-45px_rgba(15,23,42,0.95)] sm:p-4"
+                  style={{
+                    fontFamily: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif',
+                    backgroundImage:
+                      "radial-gradient(circle_at_top_right, rgba(255,255,255,0.35), transparent 52%), repeating-linear-gradient(0deg, rgba(33,75,135,0.05) 0 1px, transparent 1px 24px)",
+                  }}
+                >
+                  <div className="rounded-[22px] border border-[#2a4f89]/70 bg-[#f4e9d1]/95 p-2 shadow-inner shadow-[#a98f5a1f] sm:p-3">
+                    <div className="mb-3 border-b border-[#2a4f89]/60 px-2 pb-2">
+                      <p className="text-[11px] uppercase tracking-[0.22em] text-[#2a4f89]">Kniffel-Gewinnkarte</p>
+                      <p className="mt-1 text-sm font-semibold text-[#123f84]">Punkteblatt</p>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="min-w-[820px] w-full border-collapse text-sm text-[#1d4a89]">
+                        <thead>
+                          <tr>
+                            <th className="sticky left-0 z-30 border border-[#2a4f89]/70 bg-[#e6d8ba] px-3 py-2 text-left text-xs font-semibold uppercase tracking-[0.09em]">
+                              Kombination
                             </th>
-                          ))}
-                        </tr>
-                      </thead>
-
-                      <tbody>
-                        {CATEGORIES.map((category) => (
-                          <tr key={category}>
-                            <td className="sticky left-0 z-10 border-b border-slate-800 bg-slate-900 px-3 py-2 text-slate-300">
-                              {CATEGORY_LABELS[category]}
-                            </td>
-                            {room.players.map((player) => {
-                              const score = player.scores[category];
-                              const isMyCell = player.id === clientId;
-                              const previewValue = scorePreview[category];
-                              const allowScore =
-                                room.status === "playing" &&
-                                isMyTurn &&
-                                isMyCell &&
-                                typeof score !== "number" &&
-                                typeof previewValue === "number";
-
-                              return (
-                                <td
-                                  key={`${player.id}-${category}`}
-                                  className={[
-                                    "border-b border-slate-800 px-3 py-2",
-                                    room.currentPlayerId === player.id ? "bg-cyan-950/25" : "",
-                                  ].join(" ")}
-                                >
-                                  {typeof score === "number" && (
-                                    <span className="font-semibold text-slate-100">{score}</span>
-                                  )}
-
-                                  {allowScore && (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleScore(category)}
-                                      className="rounded-md border border-amber-400/50 bg-amber-400/15 px-2 py-1 text-xs font-semibold text-amber-100 transition hover:bg-amber-400/25"
-                                    >
-                                      {previewValue} eintragen
-                                    </button>
-                                  )}
-
-                                  {typeof score !== "number" && !allowScore && (
-                                    <span className="text-slate-500">-</span>
-                                  )}
-                                </td>
-                              );
-                            })}
+                            {room.players.map((player) => (
+                              <th
+                                key={player.id}
+                                className={[
+                                  "border border-[#2a4f89]/70 px-3 py-2 text-center text-xs font-semibold uppercase tracking-[0.09em]",
+                                  room.currentPlayerId === player.id
+                                    ? "bg-[#d5e5fb] text-[#113a78]"
+                                    : "bg-[#e6d8ba] text-[#1d4a89]",
+                                ].join(" ")}
+                              >
+                                {player.name}
+                              </th>
+                            ))}
                           </tr>
-                        ))}
+                        </thead>
 
-                        {[
-                          ["upperTotal", "Oberer Block"],
-                          ["bonus", "Bonus (63+)"],
-                          ["lowerTotal", "Unterer Block"],
-                          ["total", "Gesamt"],
-                        ].map(([key, label]) => (
-                          <tr key={key}>
-                            <td className="sticky left-0 z-10 border-b border-slate-800 bg-slate-900 px-3 py-2 font-semibold text-slate-200">
-                              {label}
+                        <tbody>
+                          <tr>
+                            <td
+                              colSpan={room.players.length + 1}
+                              className="border border-[#2a4f89]/70 bg-[#e0d0af] px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.1em]"
+                            >
+                              Oberer Teil
+                            </td>
+                          </tr>
+
+                          {UPPER_SCORE_ROWS.map((row) => (
+                            <tr key={row.category}>
+                              <td className="sticky left-0 z-20 border border-[#2a4f89]/65 bg-[#f4e9d1] px-3 py-2 align-top">
+                                <div className="flex items-start gap-2">
+                                  <span className="mt-0.5 text-lg text-[#1f4f93]">{row.icon}</span>
+                                  <div>
+                                    <div className="font-semibold text-[#143f82]">{row.label}</div>
+                                    <div className="text-xs text-[#355d98]">{row.description}</div>
+                                  </div>
+                                </div>
+                              </td>
+
+                              {room.players.map((player) => {
+                                const score = player.scores[row.category];
+                                const isMyCell = player.id === clientId;
+                                const previewValue = scorePreview[row.category];
+                                const allowScore =
+                                  room.status === "playing" &&
+                                  isMyTurn &&
+                                  isMyCell &&
+                                  typeof score !== "number" &&
+                                  typeof previewValue === "number";
+
+                                return (
+                                  <td
+                                    key={`${player.id}-${row.category}`}
+                                    className={[
+                                      "border border-[#2a4f89]/65 px-3 py-2 text-center",
+                                      room.currentPlayerId === player.id ? "bg-[#e5efff]" : "bg-[#f7ecd8]",
+                                    ].join(" ")}
+                                  >
+                                    {typeof score === "number" && (
+                                      <span
+                                        className={[
+                                          "font-bold",
+                                          score === 0
+                                            ? "text-[#b52f2f] line-through decoration-2"
+                                            : "text-[#123f84]",
+                                        ].join(" ")}
+                                      >
+                                        {score}
+                                      </span>
+                                    )}
+
+                                    {allowScore && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleScore(row.category)}
+                                        className="rounded-md border border-[#7c8ba5]/70 bg-[#dbe4ee]/65 px-2 py-1 text-xs font-semibold text-[#4a5972] transition hover:bg-[#ced8e6]"
+                                      >
+                                        {previewValue}
+                                      </button>
+                                    )}
+
+                                    {typeof score !== "number" && !allowScore && (
+                                      <span className="text-[#8a94a8]/80">-</span>
+                                    )}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          ))}
+
+                          <tr>
+                            <td className="sticky left-0 z-20 border border-[#2a4f89]/65 bg-[#ece0c5] px-3 py-2 font-semibold text-[#184587]">
+                              Gesamt oberer Teil →
                             </td>
                             {room.players.map((player) => (
                               <td
-                                key={`${player.id}-${key}`}
+                                key={`${player.id}-upper-total`}
                                 className={[
-                                  "border-b border-slate-800 px-3 py-2 font-semibold",
-                                  key === "total" ? "text-cyan-100" : "text-slate-200",
+                                  "border border-[#2a4f89]/65 px-3 py-2 text-center font-semibold text-[#123f84]",
+                                  room.currentPlayerId === player.id ? "bg-[#dceafb]" : "bg-[#f3e6ce]",
                                 ].join(" ")}
                               >
-                                {key === "upperTotal" && player.upperTotal}
-                                {key === "bonus" && player.bonus}
-                                {key === "lowerTotal" && player.lowerTotal}
-                                {key === "total" && player.total}
+                                {player.upperTotal}
                               </td>
                             ))}
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+
+                          <tr>
+                            <td className="sticky left-0 z-20 border border-[#2a4f89]/65 bg-[#ece0c5] px-3 py-2 text-sm text-[#1f4f93]">
+                              Bonus bei 63 oder mehr = 35 →
+                            </td>
+                            {room.players.map((player) => (
+                              <td
+                                key={`${player.id}-bonus`}
+                                className={[
+                                  "border border-[#2a4f89]/65 px-3 py-2 text-center font-semibold text-[#123f84]",
+                                  room.currentPlayerId === player.id ? "bg-[#dceafb]" : "bg-[#f3e6ce]",
+                                ].join(" ")}
+                              >
+                                {player.bonus}
+                              </td>
+                            ))}
+                          </tr>
+
+                          <tr>
+                            <td className="sticky left-0 z-20 border border-[#2a4f89]/65 bg-[#e3d4b4] px-3 py-2 font-semibold text-[#123f84]">
+                              Gesamt oberer Teil
+                            </td>
+                            {room.players.map((player) => (
+                              <td
+                                key={`${player.id}-upper-with-bonus`}
+                                className={[
+                                  "border border-[#2a4f89]/65 px-3 py-2 text-center font-bold text-[#123f84]",
+                                  room.currentPlayerId === player.id ? "bg-[#dceafb]" : "bg-[#efdfc2]",
+                                ].join(" ")}
+                              >
+                                {player.upperTotal + player.bonus}
+                              </td>
+                            ))}
+                          </tr>
+
+                          <tr>
+                            <td
+                              colSpan={room.players.length + 1}
+                              className="border border-[#2a4f89]/70 bg-[#dccba8] px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.1em]"
+                            >
+                              Unterer Teil
+                            </td>
+                          </tr>
+
+                          {LOWER_SCORE_ROWS.map((row) => (
+                            <tr key={row.category}>
+                              <td className="sticky left-0 z-20 border border-[#2a4f89]/65 bg-[#f4e9d1] px-3 py-2 align-top">
+                                <div>
+                                  <div className="font-semibold text-[#143f82]">{row.label}</div>
+                                  <div className="text-xs text-[#355d98]">{row.description}</div>
+                                </div>
+                              </td>
+
+                              {room.players.map((player) => {
+                                const score = player.scores[row.category];
+                                const isMyCell = player.id === clientId;
+                                const previewValue = scorePreview[row.category];
+                                const allowScore =
+                                  room.status === "playing" &&
+                                  isMyTurn &&
+                                  isMyCell &&
+                                  typeof score !== "number" &&
+                                  typeof previewValue === "number";
+
+                                return (
+                                  <td
+                                    key={`${player.id}-${row.category}`}
+                                    className={[
+                                      "border border-[#2a4f89]/65 px-3 py-2 text-center",
+                                      room.currentPlayerId === player.id ? "bg-[#e5efff]" : "bg-[#f7ecd8]",
+                                    ].join(" ")}
+                                  >
+                                    {typeof score === "number" && (
+                                      <span
+                                        className={[
+                                          "font-bold",
+                                          score === 0
+                                            ? "text-[#b52f2f] line-through decoration-2"
+                                            : "text-[#123f84]",
+                                        ].join(" ")}
+                                      >
+                                        {score}
+                                      </span>
+                                    )}
+
+                                    {allowScore && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleScore(row.category)}
+                                        className="rounded-md border border-[#7c8ba5]/70 bg-[#dbe4ee]/65 px-2 py-1 text-xs font-semibold text-[#4a5972] transition hover:bg-[#ced8e6]"
+                                      >
+                                        {previewValue}
+                                      </button>
+                                    )}
+
+                                    {typeof score !== "number" && !allowScore && (
+                                      <span className="text-[#8a94a8]/80">-</span>
+                                    )}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          ))}
+
+                          <tr>
+                            <td className="sticky left-0 z-20 border border-[#2a4f89]/65 bg-[#e3d4b4] px-3 py-2 font-semibold text-[#123f84]">
+                              Gesamt unterer Teil
+                            </td>
+                            {room.players.map((player) => (
+                              <td
+                                key={`${player.id}-lower-total`}
+                                className={[
+                                  "border border-[#2a4f89]/65 px-3 py-2 text-center font-bold text-[#123f84]",
+                                  room.currentPlayerId === player.id ? "bg-[#dceafb]" : "bg-[#efdfc2]",
+                                ].join(" ")}
+                              >
+                                {player.lowerTotal}
+                              </td>
+                            ))}
+                          </tr>
+
+                          <tr>
+                            <td className="sticky left-0 z-20 border border-[#2a4f89]/65 bg-[#e3d4b4] px-3 py-2 font-semibold text-[#123f84]">
+                              Gesamt oberer Teil (Übertrag)
+                            </td>
+                            {room.players.map((player) => (
+                              <td
+                                key={`${player.id}-carried-upper`}
+                                className={[
+                                  "border border-[#2a4f89]/65 px-3 py-2 text-center font-bold text-[#123f84]",
+                                  room.currentPlayerId === player.id ? "bg-[#dceafb]" : "bg-[#efdfc2]",
+                                ].join(" ")}
+                              >
+                                {player.upperTotal + player.bonus}
+                              </td>
+                            ))}
+                          </tr>
+
+                          <tr>
+                            <td className="sticky left-0 z-20 border-2 border-[#2a4f89]/80 bg-[#d6c39c] px-3 py-2 text-base font-bold text-[#0f366f]">
+                              Endsumme
+                            </td>
+                            {room.players.map((player) => (
+                              <td
+                                key={`${player.id}-total`}
+                                className={[
+                                  "border-2 border-[#2a4f89]/80 px-3 py-2 text-center text-base font-extrabold text-[#0f366f]",
+                                  room.currentPlayerId === player.id ? "bg-[#cdddf4]" : "bg-[#e7d5b2]",
+                                ].join(" ")}
+                              >
+                                {player.total}
+                              </td>
+                            ))}
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
               </div>
