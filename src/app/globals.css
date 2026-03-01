@@ -34,3 +34,25 @@ textarea,
 select {
   font: inherit;
 }
+
+@keyframes dice-roll {
+  0% {
+    transform: rotateX(0deg) rotateY(0deg);
+  }
+  25% {
+    transform: rotateX(180deg) rotateY(90deg);
+  }
+  50% {
+    transform: rotateX(360deg) rotateY(180deg);
+  }
+  75% {
+    transform: rotateX(540deg) rotateY(270deg);
+  }
+  100% {
+    transform: rotateX(720deg) rotateY(360deg);
+  }
+}
+
+.animate-dice-roll {
+  animation: dice-roll 0.8s cubic-bezier(0.22, 0.61, 0.36, 1);
+}

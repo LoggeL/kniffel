@@ -574,7 +574,7 @@ export function KniffelApp() {
   };
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#efe4ca] text-[#163f7b]" style={{ backgroundImage: "url('/tulips-bg.png')", backgroundSize: "cover", backgroundPosition: "center", backgroundAttachment: "fixed" }}>
+    <main className="relative min-h-screen overflow-hidden bg-[#efe4ca] text-[#163f7b]" style={{ backgroundImage: "url('/tulips-bg.jpg')", backgroundSize: "cover", backgroundPosition: "center", backgroundAttachment: "fixed" }}>
       <div
         className="pointer-events-none absolute inset-0"
         style={{
