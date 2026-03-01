@@ -399,6 +399,11 @@ function registerGameHandlers(io) {
         entry.scores = createEmptyScores();
       }
 
+      // Shuffle player order randomly
+      for (let i = room.players.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [room.players[i], room.players[j]] = [room.players[j], room.players[i]];
+      }
       room.status = "playing";
       room.turnIndex = 0;
       room.turn = makeTurnState();

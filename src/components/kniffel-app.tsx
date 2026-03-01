@@ -11,6 +11,7 @@ import { getSocket } from "@/lib/socket";
 import type { AckResponse, PlayerState, RoomState } from "@/lib/types";
 import { DiceBox } from "@/components/dice-box";
 import {
+  playDiceRoll,
   playScoreEntry,
   playKniffelFanfare,
   playCelebration,
@@ -752,7 +753,7 @@ export function KniffelApp() {
                     className={[
                       "mt-4 w-full rounded-md border px-4 py-3 font-semibold uppercase tracking-[0.08em] transition",
                       canRoll && room.status === "playing"
-                        ? "text-[#123f84] hover:brightness-95"
+                        ? "cursor-pointer text-[#123f84] hover:brightness-95"
                         : "cursor-not-allowed border-[#7f92b3]/45 bg-[#e6dcc5]/70 text-[#7f92b3]",
                     ].join(" ")}
                     style={canRoll && room.status === "playing" && activeColor ? { borderColor: `${activeColor}aa`, backgroundColor: `${activeColor}20` } : canRoll && room.status === "playing" ? { borderColor: "rgba(42,79,137,0.7)", backgroundColor: "#dce8f8" } : undefined}
