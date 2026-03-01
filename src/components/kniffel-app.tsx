@@ -98,44 +98,6 @@ function detectCelebration(
   return null;
 }
 
-function TulipDecoration() {
-  return (
-    <div className="pointer-events-none flex justify-center py-3 opacity-60">
-      <svg viewBox="0 0 200 80" width="200" height="80" aria-hidden="true">
-        {/* Left tulip */}
-        <g transform="translate(40,10)">
-          <path d="M0,45 Q-8,20 0,5 Q8,20 0,45Z" fill="#9b59b6" />
-          <path d="M0,45 Q-12,25 -5,8" fill="none" stroke="#8e44ad" strokeWidth="1" />
-          <path d="M0,45 Q12,25 5,8" fill="none" stroke="#8e44ad" strokeWidth="1" />
-          <path d="M-3,5 Q0,-3 3,5" fill="#7d3c98" />
-          <line x1="0" y1="45" x2="0" y2="70" stroke="#27ae60" strokeWidth="2.5" />
-          <path d="M0,55 Q-12,48 -18,52" fill="none" stroke="#27ae60" strokeWidth="1.8" />
-          <ellipse cx="-18" cy="52" rx="5" ry="3" fill="#2ecc71" transform="rotate(-15,-18,52)" />
-        </g>
-        {/* Center tulip */}
-        <g transform="translate(100,5)">
-          <path d="M0,50 Q-10,22 0,3 Q10,22 0,50Z" fill="#8e44ad" />
-          <path d="M0,50 Q-14,28 -6,8" fill="none" stroke="#7d3c98" strokeWidth="1.2" />
-          <path d="M0,50 Q14,28 6,8" fill="none" stroke="#7d3c98" strokeWidth="1.2" />
-          <path d="M-4,3 Q0,-5 4,3" fill="#6c3483" />
-          <line x1="0" y1="50" x2="0" y2="75" stroke="#27ae60" strokeWidth="2.5" />
-          <path d="M0,60 Q15,53 20,56" fill="none" stroke="#27ae60" strokeWidth="1.8" />
-          <ellipse cx="20" cy="56" rx="5" ry="3" fill="#2ecc71" transform="rotate(12,20,56)" />
-        </g>
-        {/* Right tulip */}
-        <g transform="translate(160,10)">
-          <path d="M0,45 Q-8,20 0,5 Q8,20 0,45Z" fill="#a569bd" />
-          <path d="M0,45 Q-12,25 -5,8" fill="none" stroke="#9b59b6" strokeWidth="1" />
-          <path d="M0,45 Q12,25 5,8" fill="none" stroke="#9b59b6" strokeWidth="1" />
-          <path d="M-3,5 Q0,-3 3,5" fill="#8e44ad" />
-          <line x1="0" y1="45" x2="0" y2="70" stroke="#27ae60" strokeWidth="2.5" />
-          <path d="M0,56 Q-14,50 -17,54" fill="none" stroke="#27ae60" strokeWidth="1.8" />
-          <ellipse cx="-17" cy="54" rx="5" ry="3" fill="#2ecc71" transform="rotate(-10,-17,54)" />
-        </g>
-      </svg>
-    </div>
-  );
-}
 
 function CelebrationOverlay({ kind, onDone }: { kind: CelebrationKind; onDone: () => void }) {
   useEffect(() => {
@@ -610,7 +572,6 @@ export function KniffelApp() {
 
         {!room && (
           <section className="mx-auto grid w-full max-w-3xl gap-4 rounded-[28px] border-2 border-[#2a4f89]/70 bg-[#f6ecd6]/90 p-5 shadow-[0_28px_60px_-46px_rgba(15,23,42,0.95)] backdrop-blur sm:p-8">
-            <TulipDecoration />
 
             <div className="sm:col-span-2">
               <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-[#315e99]" htmlFor="name-input">
