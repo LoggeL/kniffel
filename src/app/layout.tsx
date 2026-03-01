@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
-import { JetBrains_Mono, Space_Grotesk } from "next/font/google";
+import { Cormorant_Garamond, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
-const spaceGrotesk = Space_Grotesk({
-  variable: "--font-space-grotesk",
+const kniffelSerif = Cormorant_Garamond({
+  variable: "--font-kniffel-serif",
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
 });
 
 const jetBrainsMono = JetBrains_Mono({
@@ -24,9 +25,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="de">
-      <body className={`${spaceGrotesk.variable} ${jetBrainsMono.variable} antialiased`}>
-        {children}
-      </body>
+      <body className={`${kniffelSerif.variable} ${jetBrainsMono.variable} antialiased`}>{children}</body>
     </html>
   );
 }

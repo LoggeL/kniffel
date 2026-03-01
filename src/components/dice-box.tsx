@@ -25,9 +25,14 @@ type Vec3 = [number, number, number];
 
 const DICE_SIZE = 0.86;
 const DICE_HALF = DICE_SIZE / 2;
-const BOX_WIDTH = 7.8;
-const BOX_DEPTH = 4.6;
-const BOX_HEIGHT = 3.6;
+const SURFACE_WIDTH = 7.9;
+const SURFACE_DEPTH = 4.8;
+const AIR_HEIGHT = 3.5;
+const DICE_COLLISION_DISTANCE = DICE_SIZE * 0.93;
+const DICE_COLLISION_DISTANCE_SQ = DICE_COLLISION_DISTANCE * DICE_COLLISION_DISTANCE;
+const COLLISION_RESTITUTION = 0.62;
+const WALL_RESTITUTION = 0.64;
+const FLOOR_RESTITUTION = 0.46;
 
 const FACE_DOTS: Record<number, [number, number][]> = {
   1: [[0, 0]],
@@ -74,6 +79,9 @@ const FACE_LAYOUT: { value: number; position: Vec3; rotation: Vec3 }[] = [
 
 const tempEuler = new THREE.Euler();
 const tempQuat = new THREE.Quaternion();
+const collisionNormal = new THREE.Vector3();
+const relativeVelocityVector = new THREE.Vector3();
+const collisionSpinAxis = new THREE.Vector3();
 
 function clampDiceValue(value: number): number {
   if (value < 1 || value > 6) {
@@ -121,8 +129,8 @@ function buildRestPositions(count: number): Vec3[] {
     return [[0, DICE_HALF, 0]];
   }
 
-  const left = -BOX_WIDTH / 2 + DICE_HALF + 0.35;
-  const right = BOX_WIDTH / 2 - DICE_HALF - 0.35;
+  const left = -SURFACE_WIDTH / 2 + DICE_HALF + 0.35;
+  const right = SURFACE_WIDTH / 2 - DICE_HALF - 0.35;
   const step = (right - left) / (count - 1);
 
   return Array.from({ length: count }, (_, index) => [left + step * index, DICE_HALF, 0]);
@@ -133,7 +141,7 @@ function DotFace({ value, position, rotation, held }: { value: number; position:
   const spread = faceSize * 0.27;
   const dotRadius = DICE_SIZE * 0.06;
   const dotDepth = DICE_SIZE * 0.017;
-  const dotColor = held ? "#1f5f30" : "#1f2937";
+  const dotColor = held ? "#143f82" : "#1f365e";
 
   const dots = FACE_DOTS[value] || FACE_DOTS[1];
 
@@ -142,7 +150,7 @@ function DotFace({ value, position, rotation, held }: { value: number; position:
       <mesh receiveShadow>
         <planeGeometry args={[faceSize, faceSize]} />
         <meshStandardMaterial
-          color={held ? "#d9ffe3" : "#ffffff"}
+          color={held ? "#dbe8ff" : "#ffffff"}
           roughness={0.45}
           metalness={0.02}
           transparent
@@ -193,11 +201,11 @@ function DiceMesh({
     >
       <RoundedBox args={[DICE_SIZE, DICE_SIZE, DICE_SIZE]} radius={0.14} smoothness={8} castShadow receiveShadow>
         <meshStandardMaterial
-          color={held ? "#c0ffd2" : "#f2f6ff"}
+          color={held ? "#d4e5ff" : "#f4f8ff"}
           roughness={0.32}
           metalness={0.04}
-          emissive={held ? "#2f9e44" : "#000000"}
-          emissiveIntensity={held ? 0.48 : 0}
+          emissive={held ? "#2b5aa4" : "#000000"}
+          emissiveIntensity={held ? 0.28 : 0}
         />
       </RoundedBox>
 
@@ -264,11 +272,12 @@ function DiceScene({ dice, held, disabled, rollSequence, onToggleHold }: DiceBox
 
     previousRollSequenceRef.current = rollSequence;
 
-    const xMin = -BOX_WIDTH / 2 + DICE_HALF + 0.2;
-    const xMax = BOX_WIDTH / 2 - DICE_HALF - 0.2;
-    const zMin = -BOX_DEPTH / 2 + DICE_HALF + 0.2;
-    const zMax = BOX_DEPTH / 2 - DICE_HALF - 0.2;
+    const xMin = -SURFACE_WIDTH / 2 + DICE_HALF + 0.15;
+    const xMax = SURFACE_WIDTH / 2 - DICE_HALF - 0.15;
+    const zMin = -SURFACE_DEPTH / 2 + DICE_HALF + 0.15;
+    const zMax = SURFACE_DEPTH / 2 - DICE_HALF - 0.15;
 
+    // Every non-held die receives initial velocity in this exact effect tick.
     for (let index = 0; index < count; index += 1) {
       const die = dieRefs.current[index];
       const state = stateRef.current[index];
@@ -288,15 +297,15 @@ function DiceScene({ dice, held, disabled, rollSequence, onToggleHold }: DiceBox
 
       die.position.set(
         randomBetween(xMin, xMax),
-        randomBetween(DICE_HALF + 0.9, BOX_HEIGHT - DICE_HALF - 0.35),
+        randomBetween(DICE_HALF + 0.92, AIR_HEIGHT - DICE_HALF - 0.35),
         randomBetween(zMin, zMax)
       );
 
-      state.velocity.set(randomBetween(-3.6, 3.6), randomBetween(4.4, 7.4), randomBetween(-3.4, 3.4));
+      state.velocity.set(randomBetween(-4.2, 4.2), randomBetween(4.8, 7.6), randomBetween(-3.8, 3.8));
       state.angularVelocity.set(
-        randomBetween(-12, 12),
-        randomBetween(-12, 12),
-        randomBetween(-12, 12)
+        randomBetween(-13.4, 13.4),
+        randomBetween(-13.4, 13.4),
+        randomBetween(-13.4, 13.4)
       );
       state.rolling = true;
       state.settling = false;
@@ -332,30 +341,30 @@ function DiceScene({ dice, held, disabled, rollSequence, onToggleHold }: DiceBox
         tempQuat.setFromEuler(tempEuler);
         die.quaternion.multiply(tempQuat).normalize();
 
-        const xLimit = BOX_WIDTH / 2 - DICE_HALF;
-        const zLimit = BOX_DEPTH / 2 - DICE_HALF;
+        const xLimit = SURFACE_WIDTH / 2 - DICE_HALF;
+        const zLimit = SURFACE_DEPTH / 2 - DICE_HALF;
         const yFloor = DICE_HALF;
-        const yCeiling = BOX_HEIGHT - DICE_HALF;
+        const yCeiling = AIR_HEIGHT - DICE_HALF;
 
         if (die.position.x < -xLimit) {
           die.position.x = -xLimit;
-          state.velocity.x = Math.abs(state.velocity.x) * 0.66;
+          state.velocity.x = Math.abs(state.velocity.x) * WALL_RESTITUTION;
         } else if (die.position.x > xLimit) {
           die.position.x = xLimit;
-          state.velocity.x = -Math.abs(state.velocity.x) * 0.66;
+          state.velocity.x = -Math.abs(state.velocity.x) * WALL_RESTITUTION;
         }
 
         if (die.position.z < -zLimit) {
           die.position.z = -zLimit;
-          state.velocity.z = Math.abs(state.velocity.z) * 0.66;
+          state.velocity.z = Math.abs(state.velocity.z) * WALL_RESTITUTION;
         } else if (die.position.z > zLimit) {
           die.position.z = zLimit;
-          state.velocity.z = -Math.abs(state.velocity.z) * 0.66;
+          state.velocity.z = -Math.abs(state.velocity.z) * WALL_RESTITUTION;
         }
 
         if (die.position.y < yFloor) {
           die.position.y = yFloor;
-          state.velocity.y = Math.abs(state.velocity.y) * 0.48;
+          state.velocity.y = Math.abs(state.velocity.y) * FLOOR_RESTITUTION;
           state.velocity.x *= 0.9;
           state.velocity.z *= 0.9;
         } else if (die.position.y > yCeiling) {
@@ -377,6 +386,94 @@ function DiceScene({ dice, held, disabled, rollSequence, onToggleHold }: DiceBox
           state.settling = true;
         }
       }
+    }
+
+    for (let firstIndex = 0; firstIndex < count; firstIndex += 1) {
+      const firstDie = dieRefs.current[firstIndex];
+      const firstState = stateRef.current[firstIndex];
+      if (!firstDie || !firstState) {
+        continue;
+      }
+
+      for (let secondIndex = firstIndex + 1; secondIndex < count; secondIndex += 1) {
+        const secondDie = dieRefs.current[secondIndex];
+        const secondState = stateRef.current[secondIndex];
+        if (!secondDie || !secondState) {
+          continue;
+        }
+
+        collisionNormal.subVectors(secondDie.position, firstDie.position);
+        const distanceSq = collisionNormal.lengthSq();
+        if (distanceSq <= 0 || distanceSq >= DICE_COLLISION_DISTANCE_SQ) {
+          continue;
+        }
+
+        const distance = Math.sqrt(distanceSq);
+        collisionNormal.multiplyScalar(1 / Math.max(distance, 1e-4));
+        const overlap = DICE_COLLISION_DISTANCE - distance + 0.002;
+
+        const firstLocked = Boolean(held[firstIndex] && !firstState.rolling);
+        const secondLocked = Boolean(held[secondIndex] && !secondState.rolling);
+
+        if (firstLocked && secondLocked) {
+          continue;
+        }
+
+        if (firstLocked) {
+          secondDie.position.addScaledVector(collisionNormal, overlap);
+        } else if (secondLocked) {
+          firstDie.position.addScaledVector(collisionNormal, -overlap);
+        } else {
+          firstDie.position.addScaledVector(collisionNormal, -overlap * 0.5);
+          secondDie.position.addScaledVector(collisionNormal, overlap * 0.5);
+        }
+
+        if (firstLocked) {
+          const velocityAlongNormal = secondState.velocity.dot(collisionNormal);
+          if (velocityAlongNormal < 0) {
+            secondState.velocity.addScaledVector(
+              collisionNormal,
+              -(1 + COLLISION_RESTITUTION) * velocityAlongNormal
+            );
+          }
+        } else if (secondLocked) {
+          const velocityAlongNormal = firstState.velocity.dot(collisionNormal);
+          if (velocityAlongNormal > 0) {
+            firstState.velocity.addScaledVector(
+              collisionNormal,
+              -(1 + COLLISION_RESTITUTION) * velocityAlongNormal
+            );
+          }
+        } else {
+          relativeVelocityVector.subVectors(secondState.velocity, firstState.velocity);
+          const relativeVelocityAlongNormal = relativeVelocityVector.dot(collisionNormal);
+          if (relativeVelocityAlongNormal < 0) {
+            const impulse = (-(1 + COLLISION_RESTITUTION) * relativeVelocityAlongNormal) / 2;
+            firstState.velocity.addScaledVector(collisionNormal, -impulse);
+            secondState.velocity.addScaledVector(collisionNormal, impulse);
+          }
+        }
+
+        collisionSpinAxis.set(collisionNormal.z, 0.35, -collisionNormal.x).normalize();
+        if (!firstLocked) {
+          firstState.angularVelocity.addScaledVector(collisionSpinAxis, -2.6);
+          firstState.rolling = true;
+          firstState.settling = false;
+        }
+        if (!secondLocked) {
+          secondState.angularVelocity.addScaledVector(collisionSpinAxis, 2.6);
+          secondState.rolling = true;
+          secondState.settling = false;
+        }
+      }
+    }
+
+    for (let index = 0; index < count; index += 1) {
+      const die = dieRefs.current[index];
+      const state = stateRef.current[index];
+      if (!die || !state || state.rolling) {
+        continue;
+      }
 
       if (state.settling) {
         const settleAmount = 1 - Math.exp(-10 * dt);
@@ -395,43 +492,21 @@ function DiceScene({ dice, held, disabled, rollSequence, onToggleHold }: DiceBox
 
   return (
     <>
-      <color attach="background" args={["#070f1c"]} />
-
-      <ambientLight intensity={0.75} />
+      <ambientLight intensity={0.92} />
       <directionalLight
-        position={[5.5, 8.5, 3]}
-        intensity={1.25}
+        position={[4.8, 8.4, 2.8]}
+        intensity={1.05}
         castShadow
-        shadow-mapSize-width={2048}
-        shadow-mapSize-height={2048}
+        shadow-mapSize-width={1536}
+        shadow-mapSize-height={1536}
+        shadow-bias={-0.00025}
+        shadow-radius={7}
       />
-      <pointLight position={[-4.2, 3.2, -1.8]} intensity={0.55} color="#7dd3fc" />
+      <pointLight position={[-3.8, 2.9, -1.8]} intensity={0.42} color="#b6c8e8" />
 
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
-        <planeGeometry args={[BOX_WIDTH + 0.45, BOX_DEPTH + 0.45]} />
-        <meshStandardMaterial color="#111827" roughness={0.92} metalness={0.05} />
-      </mesh>
-
-      <mesh position={[0, BOX_HEIGHT / 2, BOX_DEPTH / 2]}>
-        <planeGeometry args={[BOX_WIDTH, BOX_HEIGHT]} />
-        <meshStandardMaterial color="#67e8f9" transparent opacity={0.16} side={THREE.DoubleSide} />
-      </mesh>
-      <mesh position={[0, BOX_HEIGHT / 2, -BOX_DEPTH / 2]}>
-        <planeGeometry args={[BOX_WIDTH, BOX_HEIGHT]} />
-        <meshStandardMaterial color="#67e8f9" transparent opacity={0.14} side={THREE.DoubleSide} />
-      </mesh>
-      <mesh rotation={[0, Math.PI / 2, 0]} position={[BOX_WIDTH / 2, BOX_HEIGHT / 2, 0]}>
-        <planeGeometry args={[BOX_DEPTH, BOX_HEIGHT]} />
-        <meshStandardMaterial color="#38bdf8" transparent opacity={0.14} side={THREE.DoubleSide} />
-      </mesh>
-      <mesh rotation={[0, Math.PI / 2, 0]} position={[-BOX_WIDTH / 2, BOX_HEIGHT / 2, 0]}>
-        <planeGeometry args={[BOX_DEPTH, BOX_HEIGHT]} />
-        <meshStandardMaterial color="#38bdf8" transparent opacity={0.14} side={THREE.DoubleSide} />
-      </mesh>
-
-      <mesh position={[0, BOX_HEIGHT / 2, 0]}>
-        <boxGeometry args={[BOX_WIDTH, BOX_HEIGHT, BOX_DEPTH]} />
-        <meshBasicMaterial color="#67e8f9" wireframe transparent opacity={0.2} />
+        <planeGeometry args={[SURFACE_WIDTH + 2.4, SURFACE_DEPTH + 2.2]} />
+        <shadowMaterial transparent opacity={0.2} />
       </mesh>
 
       {restPositions.map((_, index) => (
@@ -452,21 +527,54 @@ function DiceScene({ dice, held, disabled, rollSequence, onToggleHold }: DiceBox
 
 export function DiceBox({ dice, held, disabled, rollSequence, onToggleHold }: DiceBoxProps) {
   return (
-    <div className="mt-3 h-64 w-full overflow-hidden rounded-2xl border border-cyan-500/25 bg-slate-950/70 shadow-[0_24px_65px_-35px_rgba(8,145,178,0.85)] sm:h-72 lg:h-80">
-      <Canvas
-        shadows
-        dpr={[1, 2]}
-        camera={{ position: [0, 6.2, 7], fov: 38, near: 0.1, far: 50 }}
-        gl={{ antialias: true, alpha: true }}
-      >
-        <DiceScene
-          dice={dice}
-          held={held}
-          disabled={disabled}
-          rollSequence={rollSequence}
-          onToggleHold={onToggleHold}
-        />
-      </Canvas>
+    <div className="mt-4 rounded-[24px] border-2 border-[#2a4f89]/55 bg-[#f8eed8]/85 px-2 pb-3 pt-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.7),0_18px_40px_-30px_rgba(24,58,116,0.85)] sm:px-4">
+      <div className="h-56 w-full sm:h-64 lg:h-72">
+        <Canvas
+          shadows
+          dpr={[1, 2]}
+          camera={{ position: [0, 6.7, 5.7], fov: 33, near: 0.1, far: 50 }}
+          gl={{ antialias: true, alpha: true }}
+        >
+          <DiceScene
+            dice={dice}
+            held={held}
+            disabled={disabled}
+            rollSequence={rollSequence}
+            onToggleHold={onToggleHold}
+          />
+        </Canvas>
+      </div>
+
+      <div className="mt-1 flex justify-center">
+        <div
+          className="grid w-full max-w-3xl gap-2 sm:gap-3"
+          style={{
+            gridTemplateColumns: `repeat(${Math.max(dice.length, 1)}, minmax(0, 1fr))`,
+          }}
+        >
+          {dice.map((value, index) => (
+            <div
+              key={`die-control-${index}`}
+              className="flex flex-col items-center justify-center gap-1 rounded-md border border-[#2a4f89]/35 bg-[#f2e6cc]/70 px-1 py-2 text-[#17407b]"
+            >
+              <label className="flex items-center gap-1 text-[11px] uppercase tracking-[0.11em]">
+                <input
+                  type="checkbox"
+                  checked={Boolean(held[index])}
+                  onChange={() => onToggleHold(index)}
+                  disabled={disabled}
+                  className="h-3.5 w-3.5 accent-[#1f4d90]"
+                />
+                Halt
+              </label>
+              <span className="text-xs text-[#2a4f89]/70">Augen</span>
+              <span className="font-mono text-xl font-bold leading-none text-[#123f84]">
+                {clampDiceValue(value)}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

@@ -1,14 +1,14 @@
 @import "tailwindcss";
 
 :root {
-  --background: #020617;
-  --foreground: #e2e8f0;
+  --background: #efe4ca;
+  --foreground: #163f7b;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-space-grotesk);
+  --font-sans: var(--font-kniffel-serif);
   --font-mono: var(--font-jetbrains-mono);
 }
 
@@ -25,7 +25,7 @@ body {
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-space-grotesk), sans-serif;
+  font-family: var(--font-kniffel-serif), serif;
 }
 
 button,

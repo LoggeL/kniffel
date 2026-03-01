@@ -323,38 +323,40 @@ export function KniffelApp() {
   };
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-slate-950 text-slate-100">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(14,116,144,0.22),_transparent_45%),radial-gradient(circle_at_bottom,_rgba(249,115,22,0.18),_transparent_35%)]" />
+    <main className="relative min-h-screen overflow-hidden bg-[#efe4ca] text-[#163f7b]">
+      <div
+        className="pointer-events-none absolute inset-0"
+        style={{
+          backgroundImage:
+            "radial-gradient(circle_at_12%_8%, rgba(255,255,255,0.55), transparent 40%), radial-gradient(circle_at_88%_90%, rgba(29,78,164,0.1), transparent 42%), repeating-linear-gradient(0deg, rgba(24,61,124,0.05) 0 1px, transparent 1px 30px), repeating-linear-gradient(90deg, rgba(24,61,124,0.028) 0 1px, transparent 1px 42px)",
+        }}
+      />
 
       <div className="relative mx-auto flex w-full max-w-7xl flex-col gap-6 p-4 pb-10 sm:p-6 lg:p-8">
-        <header className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-900/60 p-4 backdrop-blur">
+        <header className="flex flex-wrap items-center justify-between gap-3 rounded-[24px] border-2 border-[#2a4f89]/70 bg-[#f8eed8]/90 p-4 shadow-[0_18px_38px_-30px_rgba(15,23,42,0.85)] backdrop-blur sm:p-5">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-cyan-100 sm:text-3xl">
+            <h1 className="text-2xl font-semibold tracking-tight text-[#123f84] sm:text-3xl">
               Kniffel Mehrspieler
             </h1>
-            <p className="text-sm text-slate-300">Echtzeitspiel fuer 2 bis 6 Spieler</p>
+            <p className="text-sm text-[#335d99]">Klassische Gewinnkarte fuer 2 bis 6 Spieler</p>
           </div>
-          <div className="flex items-center gap-2 rounded-full border border-slate-700 px-3 py-1 text-xs uppercase tracking-wide text-slate-300">
+          <div className="flex items-center gap-2 rounded-full border border-[#2a4f89]/60 bg-[#f3e7cd] px-3 py-1 text-xs uppercase tracking-[0.12em] text-[#315e99]">
             <span
               className={[
                 "h-2 w-2 rounded-full",
-                connected ? "bg-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.8)]" : "bg-rose-400",
+                connected ? "bg-[#1f5aab] shadow-[0_0_8px_rgba(32,84,165,0.5)]" : "bg-[#b65353]",
               ].join(" ")}
             />
             {connected ? "Verbunden" : "Getrennt"}
           </div>
         </header>
 
-        {error && (
-          <div className="rounded-xl border border-rose-500/40 bg-rose-950/60 px-4 py-2 text-sm text-rose-200">
-            {error}
-          </div>
-        )}
+        {error && <div className="rounded-lg border border-[#2a4f89]/50 bg-[#ecddbf] px-4 py-2 text-sm text-[#214c8f]">{error}</div>}
 
         {!room && (
-          <section className="mx-auto grid w-full max-w-3xl gap-4 rounded-3xl border border-slate-800 bg-slate-900/70 p-5 shadow-2xl shadow-slate-950/30 backdrop-blur sm:grid-cols-2 sm:p-8">
+          <section className="mx-auto grid w-full max-w-3xl gap-4 rounded-[28px] border-2 border-[#2a4f89]/70 bg-[#f6ecd6]/90 p-5 shadow-[0_28px_60px_-46px_rgba(15,23,42,0.95)] backdrop-blur sm:grid-cols-2 sm:p-8">
             <div className="sm:col-span-2">
-              <label className="mb-1 block text-sm text-slate-300" htmlFor="name-input">
+              <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-[#315e99]" htmlFor="name-input">
                 Dein Name
               </label>
               <input
@@ -363,14 +365,14 @@ export function KniffelApp() {
                 onChange={(event) => setName(event.target.value)}
                 maxLength={24}
                 placeholder="z. B. Mia"
-                className="w-full rounded-xl border border-slate-700 bg-slate-950/70 px-4 py-3 text-slate-100 outline-none ring-cyan-400 transition focus:ring-2"
+                className="w-full border-0 border-b-2 border-[#2a4f89]/55 bg-transparent px-1 py-2 text-lg text-[#123f84] outline-none transition placeholder:text-[#6481ad] focus:border-[#123f84]"
               />
             </div>
 
             <button
               type="button"
               onClick={handleCreateRoom}
-              className="rounded-xl border border-cyan-500/50 bg-cyan-500/15 px-4 py-3 font-medium text-cyan-100 transition hover:bg-cyan-500/25"
+              className="rounded-md border border-[#2a4f89]/70 bg-[#e6d8ba] px-4 py-3 font-semibold uppercase tracking-[0.08em] text-[#123f84] transition hover:bg-[#ddcfaf]"
             >
               Raum erstellen
             </button>
@@ -381,12 +383,12 @@ export function KniffelApp() {
                 onChange={(event) => setCodeInput(event.target.value.toUpperCase())}
                 maxLength={6}
                 placeholder="Code"
-                className="w-full rounded-xl border border-slate-700 bg-slate-950/70 px-4 py-3 text-slate-100 outline-none ring-amber-400 transition focus:ring-2"
+                className="w-full border-0 border-b-2 border-[#2a4f89]/55 bg-transparent px-1 py-2 text-lg uppercase tracking-[0.2em] text-[#123f84] outline-none transition placeholder:tracking-normal placeholder:text-[#6481ad] focus:border-[#123f84]"
               />
               <button
                 type="button"
                 onClick={handleJoinRoom}
-                className="rounded-xl border border-amber-500/50 bg-amber-500/15 px-4 py-3 font-medium text-amber-100 transition hover:bg-amber-500/25"
+                className="rounded-md border border-[#2a4f89]/70 bg-[#dde7f7] px-4 py-3 font-semibold uppercase tracking-[0.08em] text-[#123f84] transition hover:bg-[#cfddf4]"
               >
                 Join
               </button>
@@ -396,17 +398,17 @@ export function KniffelApp() {
 
         {room && (
           <section className="flex flex-col gap-4">
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-900/70 p-4 backdrop-blur">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-[22px] border-2 border-[#2a4f89]/70 bg-[#f6ecd5]/90 p-4 shadow-[0_14px_30px_-24px_rgba(15,23,42,0.7)]">
               <div className="space-y-1">
-                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Raum</p>
+                <p className="text-xs uppercase tracking-[0.2em] text-[#315e99]">Raum</p>
                 <div className="flex items-center gap-2">
-                  <span className="rounded-lg bg-slate-950/70 px-3 py-1 font-mono text-lg tracking-[0.2em] text-cyan-100">
+                  <span className="rounded-md border border-[#2a4f89]/60 bg-[#e6d8bb] px-3 py-1 font-mono text-lg tracking-[0.2em] text-[#123f84]">
                     {room.code}
                   </span>
                   <button
                     type="button"
                     onClick={copyCode}
-                    className="rounded-lg border border-slate-700 px-3 py-1 text-sm text-slate-200 transition hover:border-cyan-400 hover:text-cyan-200"
+                    className="rounded-md border border-[#2a4f89]/55 bg-[#f0e4c8] px-3 py-1 text-sm text-[#214c8f] transition hover:bg-[#e4d5b6]"
                   >
                     Kopieren
                   </button>
@@ -417,7 +419,7 @@ export function KniffelApp() {
                 <button
                   type="button"
                   onClick={handleLeaveRoom}
-                  className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-200 transition hover:bg-rose-500/20"
+                  className="rounded-md border border-[#2a4f89]/65 bg-[#e8d8b7] px-3 py-2 text-sm text-[#123f84] transition hover:bg-[#ddcba8]"
                 >
                   Raum verlassen
                 </button>
@@ -426,26 +428,26 @@ export function KniffelApp() {
 
             {room.status === "lobby" && (
               <div className="grid gap-4 lg:grid-cols-[1fr_auto]">
-                <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
-                  <h2 className="text-lg font-semibold text-slate-100">Lobby</h2>
-                  <p className="mt-1 text-sm text-slate-300">
+                <div className="rounded-[20px] border-2 border-[#2a4f89]/65 bg-[#f4e8cf]/90 p-4">
+                  <h2 className="text-lg font-semibold text-[#123f84]">Lobby</h2>
+                  <p className="mt-1 text-sm text-[#315e99]">
                     Warte auf Mitspieler ({room.players.length}/{room.maxPlayers})
                   </p>
                   <ul className="mt-4 grid gap-2">
                     {room.players.map((player) => (
                       <li
                         key={player.id}
-                        className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950/50 px-3 py-2"
+                        className="flex items-center justify-between rounded-md border border-[#2a4f89]/45 bg-[#efe1c2] px-3 py-2"
                       >
                         <div className="flex items-center gap-2">
-                          <span className="font-medium text-slate-100">{player.name}</span>
+                          <span className="font-medium text-[#123f84]">{player.name}</span>
                           {player.id === room.hostId && (
-                            <span className="rounded-full bg-cyan-500/15 px-2 py-0.5 text-xs text-cyan-200">
+                            <span className="rounded-full border border-[#2a4f89]/45 bg-[#d7e5fb] px-2 py-0.5 text-xs text-[#123f84]">
                               Host
                             </span>
                           )}
                           {player.id === clientId && (
-                            <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-xs text-amber-200">
+                            <span className="rounded-full border border-[#2a4f89]/45 bg-[#e7dbc0] px-2 py-0.5 text-xs text-[#123f84]">
                               Du
                             </span>
                           )}
@@ -453,7 +455,7 @@ export function KniffelApp() {
                         <span
                           className={[
                             "text-xs",
-                            player.connected ? "text-emerald-300" : "text-slate-500",
+                            player.connected ? "text-[#1f5aab]" : "text-[#6f86ad]",
                           ].join(" ")}
                         >
                           {player.connected ? "online" : "offline"}
@@ -469,10 +471,10 @@ export function KniffelApp() {
                     onClick={handleStartGame}
                     disabled={!isHost || room.players.length < room.minPlayers}
                     className={[
-                      "w-full rounded-xl border px-5 py-3 font-semibold transition lg:w-auto",
+                      "w-full rounded-md border px-5 py-3 font-semibold uppercase tracking-[0.1em] transition lg:w-auto",
                       isHost && room.players.length >= room.minPlayers
-                        ? "border-cyan-400/60 bg-cyan-400/20 text-cyan-100 hover:bg-cyan-400/30"
-                        : "cursor-not-allowed border-slate-700 bg-slate-800/70 text-slate-500",
+                        ? "border-[#2a4f89]/70 bg-[#dde9fa] text-[#123f84] hover:bg-[#cfddf2]"
+                        : "cursor-not-allowed border-[#7f92b3]/45 bg-[#e6dcc5]/70 text-[#7f92b3]",
                     ].join(" ")}
                   >
                     Spiel starten
@@ -484,11 +486,11 @@ export function KniffelApp() {
             {room.status !== "lobby" && (
               <div className="flex flex-col gap-4">
                 <div className="grid gap-4 lg:grid-cols-[1fr_auto]">
-                  <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
-                    <p className="text-sm text-slate-300">
+                  <div className="rounded-[20px] border-2 border-[#2a4f89]/65 bg-[#f4e8cf]/90 p-4">
+                    <p className="text-sm text-[#315e99]">
                       Runde {Math.max(room.currentRound, 1)} / {room.maxRounds}
                     </p>
-                    <p className="mt-1 text-lg font-semibold text-cyan-100">
+                    <p className="mt-1 text-lg font-semibold text-[#123f84]">
                       {room.status === "finished"
                         ? "Spiel beendet"
                         : currentPlayer
@@ -496,22 +498,22 @@ export function KniffelApp() {
                           : "Warte auf Spieler"}
                     </p>
                     {isMyTurn && room.status === "playing" && (
-                      <p className="mt-1 text-sm text-amber-200">Du bist dran.</p>
+                      <p className="mt-1 text-sm text-[#1f5aab]">Du bist dran.</p>
                     )}
                   </div>
 
-                  <div className="rounded-2xl border border-slate-800 bg-slate-900/70 px-4 py-3">
-                    <p className="text-xs uppercase tracking-[0.14em] text-slate-400">Spieler</p>
-                    <p className="mt-1 text-sm text-slate-200">
+                  <div className="rounded-[20px] border-2 border-[#2a4f89]/65 bg-[#f4e8cf]/90 px-4 py-3">
+                    <p className="text-xs uppercase tracking-[0.14em] text-[#315e99]">Spieler</p>
+                    <p className="mt-1 text-sm text-[#214c8f]">
                       {room.players.length} Teilnehmer · {room.maxRounds} Runden
                     </p>
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
+                <div className="rounded-[22px] border-2 border-[#2a4f89]/65 bg-[#f4e8cf]/90 p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
-                    <h3 className="text-sm uppercase tracking-[0.16em] text-slate-400">Wuerfel</h3>
-                    <div className="text-sm text-slate-300">
+                    <h3 className="text-sm uppercase tracking-[0.16em] text-[#315e99]">Wuerfel</h3>
+                    <div className="text-sm text-[#214c8f]">
                       Wuerfe: {room.turn.rollsUsed} / 3 · Verbleibend: {room.turn.rollsLeft}
                     </div>
                   </div>
@@ -529,10 +531,10 @@ export function KniffelApp() {
                     onClick={handleRoll}
                     disabled={!canRoll || room.status !== "playing"}
                     className={[
-                      "mt-4 w-full rounded-xl border px-4 py-3 font-semibold transition",
+                      "mt-4 w-full rounded-md border px-4 py-3 font-semibold uppercase tracking-[0.08em] transition",
                       canRoll && room.status === "playing"
-                        ? "border-amber-400/60 bg-amber-400/20 text-amber-100 hover:bg-amber-400/30"
-                        : "cursor-not-allowed border-slate-700 bg-slate-800/70 text-slate-500",
+                        ? "border-[#2a4f89]/70 bg-[#dce8f8] text-[#123f84] hover:bg-[#ccd9ef]"
+                        : "cursor-not-allowed border-[#7f92b3]/45 bg-[#e6dcc5]/70 text-[#7f92b3]",
                     ].join(" ")}
                   >
                     Wuerfeln
@@ -540,9 +542,9 @@ export function KniffelApp() {
                 </div>
 
                 <div
-                  className="rounded-[30px] border border-[#204b88]/70 bg-[#efe2c5] p-3 shadow-[0_30px_75px_-45px_rgba(15,23,42,0.95)] sm:p-4"
+                  className="rounded-[30px] border border-[#204b88]/70 bg-[#efe2c5] p-3 shadow-[0_26px_60px_-45px_rgba(15,23,42,0.95)] sm:p-4"
                   style={{
-                    fontFamily: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif',
+                    fontFamily: "var(--font-kniffel-serif), serif",
                     backgroundImage:
                       "radial-gradient(circle_at_top_right, rgba(255,255,255,0.35), transparent 52%), repeating-linear-gradient(0deg, rgba(33,75,135,0.05) 0 1px, transparent 1px 24px)",
                   }}
@@ -836,19 +838,19 @@ export function KniffelApp() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-[#e2d2af]/85 p-4 backdrop-blur-[2px]"
           >
             <motion.div
               initial={{ y: 30, scale: 0.96, opacity: 0 }}
               animate={{ y: 0, scale: 1, opacity: 1 }}
               exit={{ y: 20, opacity: 0 }}
-              className="w-full max-w-xl rounded-3xl border border-cyan-500/30 bg-slate-900 p-6 shadow-2xl"
+              className="w-full max-w-xl rounded-[26px] border-2 border-[#2a4f89]/70 bg-[#f5ebd5] p-6 text-[#123f84] shadow-[0_24px_54px_-38px_rgba(15,23,42,0.9)]"
             >
-              <h2 className="text-2xl font-semibold text-cyan-100">Spiel vorbei</h2>
-              <p className="mt-2 text-slate-200">
-                Gewinner: <span className="font-semibold text-amber-200">{winnerText || "Unbekannt"}</span>
+              <h2 className="text-2xl font-semibold text-[#123f84]">Spiel vorbei</h2>
+              <p className="mt-2 text-[#214c8f]">
+                Gewinner: <span className="font-semibold text-[#1f5aab]">{winnerText || "Unbekannt"}</span>
               </p>
-              {me && <p className="mt-1 text-sm text-slate-300">Dein Endstand: {me.total} Punkte</p>}
+              {me && <p className="mt-1 text-sm text-[#315e99]">Dein Endstand: {me.total} Punkte</p>}
 
               <div className="mt-4 space-y-2">
                 {room.players
@@ -857,10 +859,10 @@ export function KniffelApp() {
                   .map((player) => (
                     <div
                       key={player.id}
-                      className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2"
+                      className="flex items-center justify-between rounded-md border border-[#2a4f89]/50 bg-[#ebddbe] px-3 py-2"
                     >
-                      <span className="text-slate-100">{player.name}</span>
-                      <span className="font-semibold text-cyan-100">{player.total}</span>
+                      <span className="text-[#123f84]">{player.name}</span>
+                      <span className="font-semibold text-[#1f5aab]">{player.total}</span>
                     </div>
                   ))}
               </div>
@@ -869,7 +871,7 @@ export function KniffelApp() {
                 <button
                   type="button"
                   onClick={handleLeaveRoom}
-                  className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-4 py-2 text-sm font-medium text-rose-200 transition hover:bg-rose-500/20"
+                  className="rounded-md border border-[#2a4f89]/65 bg-[#dbe7f8] px-4 py-2 text-sm font-medium text-[#123f84] transition hover:bg-[#ccd9f0]"
                 >
                   Zur Startseite
                 </button>
