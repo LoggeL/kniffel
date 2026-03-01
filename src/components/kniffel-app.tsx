@@ -12,6 +12,7 @@ import type { AckResponse, PlayerState, RoomState } from "@/lib/types";
 import { DiceBox } from "@/components/dice-box";
 import {
   playDiceRoll,
+  playDiceLand,
   playScoreEntry,
   playKniffelFanfare,
   playCelebration,
@@ -270,13 +271,16 @@ export function KniffelApp() {
 
   // Track previous rollSequence to keep dice in place after scoring
   const prevRollSeqRef = useRef(0);
-  const displayRollSeq = useRef(0);
+  const [displayRollSeq, setDisplayRollSeq] = useState(0);
 
   useEffect(() => {
     if (!room) return;
     // Only update display roll sequence when server actually rolls
     if (room.turn.rollSequence !== prevRollSeqRef.current && room.turn.rollSequence > 0) {
-      displayRollSeq.current = room.turn.rollSequence;
+      setDisplayRollSeq(room.turn.rollSequence);
+      // Play dice sounds
+      playDiceRoll();
+      setTimeout(() => playDiceLand(), 800);
     }
     prevRollSeqRef.current = room.turn.rollSequence;
   }, [room?.turn.rollSequence, room]);
@@ -741,7 +745,7 @@ export function KniffelApp() {
                     dice={room.turn.dice}
                     held={room.turn.held}
                     disabled={!isMyTurn || room.turn.rollsUsed === 0 || room.status !== "playing"}
-                    rollSequence={displayRollSeq.current}
+                    rollSequence={displayRollSeq}
                     onToggleHold={handleToggleHold}
                     activeColor={activeColor}
                   />
