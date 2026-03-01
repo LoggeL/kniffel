@@ -589,7 +589,7 @@ export function KniffelApp() {
 
             <IconPicker selected={selectedIcon} onSelect={handleSelectIcon} />
 
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4">
               <button
                 type="button"
                 onClick={handleCreateRoom}
@@ -598,7 +598,7 @@ export function KniffelApp() {
                 Raum erstellen
               </button>
 
-              <div className="flex gap-2">
+              <div className="flex gap-3 items-end">
                 <input
                   value={codeInput}
                   onChange={(event) => setCodeInput(event.target.value.toUpperCase())}
