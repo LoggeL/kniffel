@@ -6,6 +6,7 @@ const ROOM_CODE_CHARSET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const MIN_PLAYERS = 2;
 const MAX_PLAYERS = 6;
 const MAX_ROUNDS = 13;
+const PLAYER_COLORS = ["#e74c3c", "#3498db", "#2ecc71", "#f39c12", "#9b59b6", "#1abc9c"];
 
 function randomDieValue() {
   return Math.floor(Math.random() * 6) + 1;
@@ -127,6 +128,7 @@ function serializeRoom(room) {
     players: room.players.map((player) => ({
       id: player.id,
       name: player.name,
+      color: player.color || PLAYER_COLORS[0],
       icon: player.icon || null,
       connected: player.connected,
       scores: player.scores,
@@ -182,6 +184,7 @@ function registerGameHandlers(io) {
         id: incomingId,
         name,
         icon,
+        color: PLAYER_COLORS[0],
         socketId: socket.id,
         connected: true,
         scores: createEmptyScores(),
@@ -255,6 +258,7 @@ function registerGameHandlers(io) {
           id: incomingId,
           name,
           icon,
+          color: PLAYER_COLORS[room.players.length % PLAYER_COLORS.length],
           socketId: socket.id,
           connected: true,
           scores: createEmptyScores(),

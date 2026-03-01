@@ -8,6 +8,7 @@ interface DiceBoxProps {
   disabled: boolean;
   rollSequence: number;
   onToggleHold: (index: number) => void;
+  activeColor?: string;
 }
 
 function clampDiceValue(value: number): number {
@@ -114,7 +115,7 @@ function DiceFace({ value, held, rolling, disabled, onClick, dieIndex }: {
   );
 }
 
-export function DiceBox({ dice, held, disabled, rollSequence, onToggleHold }: DiceBoxProps) {
+export function DiceBox({ dice, held, disabled, rollSequence, onToggleHold, activeColor }: DiceBoxProps) {
   const prevRollSequence = useRef(rollSequence);
   const [rollingDice, setRollingDice] = useState<boolean[]>(() => Array(dice.length).fill(false));
 
@@ -122,20 +123,21 @@ export function DiceBox({ dice, held, disabled, rollSequence, onToggleHold }: Di
     if (rollSequence === prevRollSequence.current) return;
     prevRollSequence.current = rollSequence;
 
-    // Mark non-held dice as rolling
-    const rolling = dice.map((_, i) => !held[i]);
+    // Snapshot held at time of roll
+    const heldSnapshot = [...held];
+    const rolling = dice.map((_, i) => !heldSnapshot[i]);
     setRollingDice(rolling);
 
-    // Stop animation after ~800ms
     const timer = setTimeout(() => {
       setRollingDice(Array(dice.length).fill(false));
-    }, 800);
+    }, 1200);
 
     return () => clearTimeout(timer);
-  }, [rollSequence, dice.length, held, dice]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rollSequence]);
 
   return (
-    <div className="mt-4 rounded-[24px] border-2 border-[#2a4f89]/55 bg-[#f8eed8]/85 px-2 pb-3 pt-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.7),0_18px_40px_-30px_rgba(24,58,116,0.85)] sm:px-4">
+    <div className="mt-4 rounded-[24px] border-2 bg-[#f8eed8]/85 px-2 pb-3 pt-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.7),0_18px_40px_-30px_rgba(24,58,116,0.85)] sm:px-4" style={{ borderColor: activeColor ? `${activeColor}88` : "rgba(42,79,137,0.55)" }}>
       {/* Dice row */}
       <div className="flex items-center justify-center gap-3 py-6 sm:gap-4 sm:py-8">
         {dice.map((value, index) => (
@@ -170,7 +172,8 @@ export function DiceBox({ dice, held, disabled, rollSequence, onToggleHold }: Di
                   checked={Boolean(held[index])}
                   onChange={() => onToggleHold(index)}
                   disabled={disabled}
-                  className="h-3.5 w-3.5 accent-[#1f4d90]"
+                  className="h-3.5 w-3.5"
+                  style={{ accentColor: activeColor || "#1f4d90" }}
                 />
                 Halt
               </label>

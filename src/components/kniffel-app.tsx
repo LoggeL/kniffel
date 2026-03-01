@@ -340,6 +340,7 @@ export function KniffelApp() {
     return room.players.find((p) => p.id === room.currentPlayerId) || null;
   }, [room]);
 
+  const activeColor = currentPlayer?.color || undefined;
   const isHost = Boolean(room && clientId && room.hostId === clientId);
   const isMyTurn = Boolean(room && room.status === "playing" && room.currentPlayerId === clientId);
   const canRoll = Boolean(isMyTurn && room && room.turn.rollsLeft > 0);
@@ -660,7 +661,7 @@ export function KniffelApp() {
                       >
                         <div className="flex items-center gap-2">
                           {player.icon && <span className="text-lg">{player.icon}</span>}
-                          <span className="font-medium text-[#123f84]">{player.name}</span>
+                          <span className="flex items-center gap-2 font-medium text-[#123f84]"><span className="inline-block h-3 w-3 rounded-full" style={{ backgroundColor: player.color || "#999" }} />{player.name}</span>
                           {player.id === room.hostId && (
                             <span className="rounded-full border border-[#2a4f89]/45 bg-[#d7e5fb] px-2 py-0.5 text-xs text-[#123f84]">
                               Host
@@ -715,7 +716,7 @@ export function KniffelApp() {
                           : "Warte auf Spieler"}
                     </p>
                     {isMyTurn && room.status === "playing" && (
-                      <p className="mt-1 text-sm text-[#1f5aab]">Du bist dran.</p>
+                      <p className="mt-1 text-sm font-semibold" style={{ color: activeColor || "#1f5aab" }}>Du bist dran.</p>
                     )}
                   </div>
 
@@ -741,6 +742,7 @@ export function KniffelApp() {
                     disabled={!isMyTurn || room.turn.rollsUsed === 0 || room.status !== "playing"}
                     rollSequence={displayRollSeq.current}
                     onToggleHold={handleToggleHold}
+                    activeColor={activeColor}
                   />
 
                   <button
@@ -750,9 +752,10 @@ export function KniffelApp() {
                     className={[
                       "mt-4 w-full rounded-md border px-4 py-3 font-semibold uppercase tracking-[0.08em] transition",
                       canRoll && room.status === "playing"
-                        ? "border-[#2a4f89]/70 bg-[#dce8f8] text-[#123f84] hover:bg-[#ccd9ef]"
+                        ? "text-[#123f84] hover:brightness-95"
                         : "cursor-not-allowed border-[#7f92b3]/45 bg-[#e6dcc5]/70 text-[#7f92b3]",
                     ].join(" ")}
+                    style={canRoll && room.status === "playing" && activeColor ? { borderColor: `${activeColor}aa`, backgroundColor: `${activeColor}20` } : canRoll && room.status === "playing" ? { borderColor: "rgba(42,79,137,0.7)", backgroundColor: "#dce8f8" } : undefined}
                   >
                     Wuerfeln
                   </button>
