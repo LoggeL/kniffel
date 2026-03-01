@@ -10,6 +10,7 @@ import {
 } from "@/lib/kniffel";
 import { getSocket } from "@/lib/socket";
 import type { AckResponse, PlayerState, RoomState } from "@/lib/types";
+import { DiceBox } from "@/components/dice-box";
 
 const CLIENT_ID_KEY = "kniffel-client-id";
 const PLAYER_NAME_KEY = "kniffel-player-name";
@@ -27,43 +28,6 @@ function findPlayer(room: RoomState | null, playerId: string): PlayerState | nul
     return null;
   }
   return room.players.find((player) => player.id === playerId) || null;
-}
-
-interface DiceProps {
-  value: number;
-  held: boolean;
-  disabled: boolean;
-  rollSequence: number;
-  index: number;
-  onClick: () => void;
-}
-
-function Die({ value, held, disabled, rollSequence, index, onClick }: DiceProps) {
-  const label = value > 0 ? String(value) : "?";
-
-  return (
-    <motion.button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      animate={{
-        rotate: rollSequence > 0 ? [0, 10, -10, 0] : 0,
-        scale: rollSequence > 0 ? [1, 1.08, 1] : 1,
-      }}
-      transition={{ duration: 0.38, ease: "easeOut", delay: index * 0.03 }}
-      className={[
-        "aspect-square rounded-2xl border text-3xl font-bold transition",
-        "backdrop-blur-sm",
-        held
-          ? "border-amber-300 bg-amber-300/20 text-amber-200 shadow-lg shadow-amber-900/20"
-          : "border-slate-600 bg-slate-800/80 text-slate-100 hover:border-slate-400",
-        disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer",
-      ].join(" ")}
-      aria-label={held ? `Wuerfel ${index + 1} freigeben` : `Wuerfel ${index + 1} halten`}
-    >
-      {label}
-    </motion.button>
-  );
 }
 
 export function KniffelApp() {
@@ -513,19 +477,13 @@ export function KniffelApp() {
 
                   <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
                     <h3 className="text-sm uppercase tracking-[0.16em] text-slate-400">Wuerfel</h3>
-                    <div className="mt-3 grid grid-cols-5 gap-2">
-                      {room.turn.dice.map((value, index) => (
-                        <Die
-                          key={`${index}-${room.turn.rollSequence}`}
-                          value={value}
-                          held={room.turn.held[index]}
-                          disabled={!isMyTurn || room.turn.rollsUsed === 0 || room.status !== "playing"}
-                          rollSequence={room.turn.rollSequence}
-                          index={index}
-                          onClick={() => handleToggleHold(index)}
-                        />
-                      ))}
-                    </div>
+                    <DiceBox
+                      dice={room.turn.dice}
+                      held={room.turn.held}
+                      disabled={!isMyTurn || room.turn.rollsUsed === 0 || room.status !== "playing"}
+                      rollSequence={room.turn.rollSequence}
+                      onToggleHold={handleToggleHold}
+                    />
 
                     <div className="mt-4 flex items-center justify-between text-sm text-slate-300">
                       <span>Wuerfe: {room.turn.rollsUsed} / 3</span>
