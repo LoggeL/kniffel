@@ -51,12 +51,13 @@ const DOT_POSITIONS: Record<number, [number, number][]> = {
   ],
 };
 
-function DiceFace({ value, held, rolling, disabled, onClick }: {
+function DiceFace({ value, held, rolling, disabled, onClick, dieIndex }: {
   value: number;
   held: boolean;
   rolling: boolean;
   disabled: boolean;
   onClick: () => void;
+  dieIndex: number;
 }) {
   const dots = DOT_POSITIONS[clampDiceValue(value)] ?? DOT_POSITIONS[1];
 
@@ -89,6 +90,8 @@ function DiceFace({ value, held, rolling, disabled, onClick }: {
           background: held
             ? "linear-gradient(145deg, #dbe8ff 0%, #c4d6f5 100%)"
             : "linear-gradient(145deg, #ffffff 0%, #e8e4dc 100%)",
+          animationDelay: rolling ? `${dieIndex * 60}ms` : undefined,
+          animationDuration: rolling ? `${900 + dieIndex * 50}ms` : undefined,
         }}
       >
         {dots.map(([col, row], i) => (
@@ -141,6 +144,7 @@ export function DiceBox({ dice, held, disabled, rollSequence, onToggleHold }: Di
             value={value}
             held={Boolean(held[index])}
             rolling={Boolean(rollingDice[index])}
+                dieIndex={index}
             disabled={disabled}
             onClick={() => onToggleHold(index)}
           />
