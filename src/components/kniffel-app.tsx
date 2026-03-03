@@ -780,7 +780,7 @@ export function KniffelApp() {
                       <p className="mt-1 text-sm font-semibold text-[#123f84]">Punkteblatt</p>
                     </div>
 
-                    <div className="overflow-x-auto">
+                    <div className="-mx-2 overflow-x-auto px-2 sm:-mx-3 sm:px-3" style={{ WebkitOverflowScrolling: 'touch', overscrollBehaviorX: 'contain' }}>
                       <table className="min-w-[820px] w-full border-collapse text-sm text-[#1d4a89]">
                         <thead>
                           <tr>
