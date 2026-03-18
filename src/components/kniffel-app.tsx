@@ -2,6 +2,7 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   CATEGORIES,
   type Category,
@@ -259,6 +260,7 @@ function BlurredScore({ value }: { value: number }) {
 
 export function KniffelApp() {
   const socket = getSocket();
+  const searchParams = useSearchParams();
 
   const [clientId, setClientId] = useState("");
   const [name, setName] = useState("");
@@ -295,7 +297,9 @@ export function KniffelApp() {
     localStorage.setItem(CLIENT_ID_KEY, savedClientId);
     setClientId(savedClientId);
     setName(savedName);
-    setCodeInput(savedRoomCode);
+    // URL ?room= param takes priority over saved room code
+    const urlRoom = searchParams.get("room")?.toUpperCase();
+    setCodeInput(urlRoom || savedRoomCode);
     if (savedIcon) setSelectedIcon(savedIcon);
 
     const onConnect = () => {
@@ -317,6 +321,10 @@ export function KniffelApp() {
     const onRoomUpdate = (incoming: RoomState) => {
       setRoom(incoming);
       localStorage.setItem(ROOM_CODE_KEY, incoming.code);
+      // Update URL with room code (without reload)
+      const url = new URL(window.location.href);
+      url.searchParams.set("room", incoming.code);
+      window.history.replaceState({}, "", url.toString());
     };
     const onActionError = (message: string) => setError(message);
 
@@ -392,6 +400,10 @@ export function KniffelApp() {
   const clearRoomState = () => {
     localStorage.removeItem(ROOM_CODE_KEY);
     setRoom(null);
+    // Clear URL param
+    const url = new URL(window.location.href);
+    url.searchParams.delete("room");
+    window.history.replaceState({}, "", url.toString());
   };
 
   const handleSelectIcon = (icon: string) => {
@@ -486,13 +498,32 @@ export function KniffelApp() {
     });
   };
 
+  const shareUrl = room ? `${typeof window !== "undefined" ? window.location.origin : "https://kniffel.logge.top"}?room=${room.code}` : "";
+
   const copyCode = async () => {
     if (!room) return;
     try {
-      await navigator.clipboard.writeText(room.code);
-      setError("Raumcode kopiert.");
+      await navigator.clipboard.writeText(shareUrl);
+      setError("Einladungslink kopiert! 🔗");
     } catch {
       setError("Kopieren nicht verfuegbar.");
+    }
+  };
+
+  const shareRoom = async () => {
+    if (!room) return;
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: "🎲 Kniffel Multiplayer",
+          text: `Komm in meine Kniffel-Runde! Code: ${room.code}`,
+          url: shareUrl,
+        });
+      } catch {
+        // User cancelled share
+      }
+    } else {
+      copyCode();
     }
   };
 
@@ -657,7 +688,14 @@ export function KniffelApp() {
                     onClick={copyCode}
                     className="rounded-md border border-[#2a4f89]/55 bg-[#f0e4c8] px-3 py-1 text-sm text-[#214c8f] transition hover:bg-[#e4d5b6]"
                   >
-                    Kopieren
+                    🔗 Link kopieren
+                  </button>
+                  <button
+                    type="button"
+                    onClick={shareRoom}
+                    className="rounded-md border border-[#2a4f89]/55 bg-[#dde7f7] px-3 py-1 text-sm text-[#214c8f] transition hover:bg-[#cfddf4]"
+                  >
+                    📤 Teilen
                   </button>
                 </div>
               </div>

@@ -1,5 +1,10 @@
+import { Suspense } from "react";
 import { KniffelApp } from "@/components/kniffel-app";
 
 export default function HomePage() {
-  return <KniffelApp />;
+  return (
+    <Suspense>
+      <KniffelApp />
+    </Suspense>
+  );
 }
