@@ -15,7 +15,32 @@ const jetBrainsMono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: "Kniffel Multiplayer",
-  description: "Mehrspieler-Kniffel mit Next.js und Socket.io",
+  description: "Klassisches Kniffel online spielen – 2 bis 6 Spieler, Echtzeit-Würfel, Gewinnkarte im Papier-Look. Kostenlos, kein Login nötig.",
+  keywords: ["Kniffel", "Yahtzee", "Multiplayer", "Online", "Würfelspiel", "Brettspiel", "Kostenlos"],
+  authors: [{ name: "Logge" }],
+  openGraph: {
+    title: "🎲 Kniffel Multiplayer",
+    description: "Klassisches Kniffel online mit Freunden spielen – Echtzeit-Würfel, animierte Gewinnkarte, 2-6 Spieler. Kostenlos & ohne Login!",
+    url: "https://kniffel.logge.top",
+    siteName: "Kniffel Multiplayer",
+    locale: "de_DE",
+    type: "website",
+    images: [
+      {
+        url: "/og-image.png",
+        width: 1200,
+        height: 630,
+        alt: "Kniffel Multiplayer – Würfelspiel online mit Freunden",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "🎲 Kniffel Multiplayer",
+    description: "Klassisches Kniffel online mit Freunden – Echtzeit, kostenlos, kein Login!",
+    images: ["/og-image.png"],
+  },
+  metadataBase: new URL("https://kniffel.logge.top"),
 };
 
 export default function RootLayout({
