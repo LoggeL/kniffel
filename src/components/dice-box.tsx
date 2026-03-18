@@ -1,5 +1,6 @@
 "use client";
 
+import { motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 
 interface DiceBoxProps {
@@ -137,7 +138,29 @@ export function DiceBox({ dice, held, disabled, rollSequence, onToggleHold, acti
   }, [rollSequence]);
 
   return (
-    <div className="mt-4 rounded-[24px] border-2 bg-[#f8eed8]/85 px-2 pb-3 pt-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.7),0_18px_40px_-30px_rgba(24,58,116,0.85)] sm:px-4" style={{ borderColor: activeColor ? `${activeColor}88` : "rgba(42,79,137,0.55)" }}>
+    <motion.div
+      className="mt-4 rounded-[24px] border-2 bg-[#f8eed8]/85 px-2 pb-3 pt-2 sm:px-4"
+      style={{ borderColor: activeColor || "rgba(42,79,137,0.55)" }}
+      animate={
+        activeColor
+          ? {
+              boxShadow: [
+                `inset 0 1px 0 rgba(255,255,255,0.7), 0 18px 40px -30px rgba(24,58,116,0.85), 0 0 0px 0px ${activeColor}30`,
+                `inset 0 1px 0 rgba(255,255,255,0.7), 0 18px 40px -30px rgba(24,58,116,0.85), 0 0 20px 8px ${activeColor}55`,
+                `inset 0 1px 0 rgba(255,255,255,0.7), 0 18px 40px -30px rgba(24,58,116,0.85), 0 0 0px 0px ${activeColor}30`,
+              ],
+            }
+          : {
+              boxShadow:
+                "inset 0 1px 0 rgba(255,255,255,0.7), 0 18px 40px -30px rgba(24,58,116,0.85)",
+            }
+      }
+      transition={
+        activeColor
+          ? { duration: 2.5, repeat: Infinity, ease: "easeInOut" }
+          : {}
+      }
+    >
       {/* Dice row */}
       <div className="flex items-center justify-center gap-3 py-6 sm:gap-4 sm:py-8">
         {dice.map((value, index) => (
@@ -164,15 +187,15 @@ export function DiceBox({ dice, held, disabled, rollSequence, onToggleHold, acti
           {dice.map((value, index) => (
             <div
               key={`die-control-${index}`}
-              className="flex flex-col items-center justify-center gap-1 rounded-md border border-[#2a4f89]/35 bg-[#f2e6cc]/70 px-1 py-2 text-[#17407b]"
+              className="flex min-h-[52px] flex-col items-center justify-center gap-1 rounded-md border border-[#2a4f89]/35 bg-[#f2e6cc]/70 px-1 py-2 text-[#17407b]"
             >
-              <label className="flex items-center gap-1 text-[11px] uppercase tracking-[0.11em]">
+              <label className="flex cursor-pointer items-center gap-1.5 text-[11px] uppercase tracking-[0.11em]">
                 <input
                   type="checkbox"
                   checked={Boolean(held[index])}
                   onChange={() => onToggleHold(index)}
                   disabled={disabled}
-                  className="h-3.5 w-3.5"
+                  className="h-5 w-5 cursor-pointer"
                   style={{ accentColor: activeColor || "#1f4d90" }}
                 />
                 Halt
@@ -185,6 +208,6 @@ export function DiceBox({ dice, held, disabled, rollSequence, onToggleHold, acti
           ))}
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }

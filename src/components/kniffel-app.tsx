@@ -268,6 +268,7 @@ export function KniffelApp() {
   const [connected, setConnected] = useState(false);
   const [selectedIcon, setSelectedIcon] = useState<string | null>(null);
   const [celebration, setCelebration] = useState<CelebrationKind>(null);
+  const [flashedCell, setFlashedCell] = useState<{ playerId: string; category: Category } | null>(null);
 
   // Track previous rollSequence to keep dice in place after scoring
   const prevRollSeqRef = useRef(0);
@@ -472,6 +473,8 @@ export function KniffelApp() {
         setError(ack?.error || "Punkte konnten nicht eingetragen werden.");
         return;
       }
+      setFlashedCell({ playerId: clientId, category });
+      setTimeout(() => setFlashedCell(null), 1500);
       playScoreEntry();
       if (celebKind === "kniffel") {
         playKniffelFanfare();
@@ -506,19 +509,34 @@ export function KniffelApp() {
       isMyCell &&
       typeof score !== "number" &&
       typeof previewValue === "number";
+    const isFlashing =
+      flashedCell?.playerId === player.id && flashedCell?.category === row.category;
 
     return (
       <td
         key={`${player.id}-${row.category}`}
         className={[
-          "border border-[#2a4f89]/65 px-3 py-2 text-center",
+          "relative border border-[#2a4f89]/65 px-3 py-2 text-center",
           room?.currentPlayerId === player.id ? "bg-[#e5efff]" : "bg-[#f7ecd8]",
         ].join(" ")}
       >
+        <AnimatePresence>
+          {isFlashing && (
+            <motion.div
+              key="flash"
+              initial={{ opacity: 0.8 }}
+              animate={{ opacity: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 1.3 }}
+              className="pointer-events-none absolute inset-0 rounded-sm"
+              style={{ backgroundColor: me?.color || "#1f4d90" }}
+            />
+          )}
+        </AnimatePresence>
         {typeof score === "number" && (
           <span
             className={[
-              "font-bold",
+              "relative text-sm font-bold",
               score === 0 ? "text-[#b52f2f] line-through decoration-2" : "text-[#123f84]",
             ].join(" ")}
           >
@@ -529,13 +547,14 @@ export function KniffelApp() {
           <button
             type="button"
             onClick={() => handleScore(row.category)}
-            className="rounded-md border border-[#7c8ba5]/70 bg-[#dbe4ee]/65 px-2 py-1 text-xs font-semibold text-[#4a5972] transition hover:bg-[#ced8e6]"
+            className="relative min-h-[36px] min-w-[36px] rounded-lg px-2.5 py-1.5 text-sm font-bold text-white shadow-md transition hover:brightness-110 active:scale-95"
+            style={{ backgroundColor: me?.color || "#1f4d90" }}
           >
             {previewValue}
           </button>
         )}
         {typeof score !== "number" && !allowScore && (
-          <span className="text-[#8a94a8]/80">-</span>
+          <span className="text-base font-medium text-[#9ba5b7]">—</span>
         )}
       </td>
     );
@@ -708,8 +727,47 @@ export function KniffelApp() {
 
             {room.status !== "lobby" && (
               <div className="flex flex-col gap-4">
+                {room.status === "playing" && currentPlayer && (
+                  <motion.div
+                    key={currentPlayer.id}
+                    initial={{ opacity: 0, y: -8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.35 }}
+                    className="flex items-center gap-3 rounded-xl border-l-4 px-4 py-3"
+                    style={{
+                      borderLeftColor: currentPlayer.color,
+                      backgroundColor: `${currentPlayer.color}18`,
+                    }}
+                  >
+                    <div
+                      className="h-4 w-4 flex-shrink-0 rounded-full"
+                      style={{ backgroundColor: currentPlayer.color }}
+                    />
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                      <span className="font-semibold text-[#123f84]">
+                        {isMyTurn ? "Du bist dran" : `${currentPlayer.name} ist am Zug`}
+                      </span>
+                      {isMyTurn && (
+                        <span
+                          className="rounded-full px-2 py-0.5 text-xs font-bold text-white"
+                          style={{ backgroundColor: currentPlayer.color }}
+                        >
+                          Dein Zug!
+                        </span>
+                      )}
+                    </div>
+                  </motion.div>
+                )}
+
                 <div className="grid gap-4 lg:grid-cols-[1fr_auto]">
-                  <div className="rounded-[20px] border-2 border-[#2a4f89]/65 bg-[#f4e8cf]/90 p-4">
+                  <div
+                    className="rounded-[20px] border-2 border-[#2a4f89]/65 bg-[#f4e8cf]/90 p-4"
+                    style={
+                      currentPlayer && room.status === "playing"
+                        ? { borderColor: `${currentPlayer.color}70` }
+                        : undefined
+                    }
+                  >
                     <p className="text-sm text-[#315e99]">
                       Runde {Math.max(room.currentRound, 1)} / {room.maxRounds}
                     </p>
@@ -720,9 +778,6 @@ export function KniffelApp() {
                           ? `${currentPlayer.name} ist am Zug`
                           : "Warte auf Spieler"}
                     </p>
-                    {isMyTurn && room.status === "playing" && (
-                      <p className="mt-1 text-sm font-semibold" style={{ color: activeColor || "#1f5aab" }}>Du bist dran.</p>
-                    )}
                   </div>
 
                   <div className="rounded-[20px] border-2 border-[#2a4f89]/65 bg-[#f4e8cf]/90 px-4 py-3">
@@ -755,12 +810,20 @@ export function KniffelApp() {
                     onClick={handleRoll}
                     disabled={!canRoll || room.status !== "playing"}
                     className={[
-                      "mt-4 w-full rounded-md border px-4 py-3 font-semibold uppercase tracking-[0.08em] transition",
+                      "mt-4 w-full rounded-md border px-4 py-3 font-bold uppercase tracking-[0.08em] transition",
                       canRoll && room.status === "playing"
-                        ? "cursor-pointer text-[#123f84] hover:brightness-95"
+                        ? "cursor-pointer hover:brightness-95 active:scale-[0.98]"
                         : "cursor-not-allowed border-[#7f92b3]/45 bg-[#e6dcc5]/70 text-[#7f92b3]",
                     ].join(" ")}
-                    style={canRoll && room.status === "playing" && activeColor ? { borderColor: `${activeColor}aa`, backgroundColor: `${activeColor}20` } : canRoll && room.status === "playing" ? { borderColor: "rgba(42,79,137,0.7)", backgroundColor: "#dce8f8" } : undefined}
+                    style={
+                      canRoll && room.status === "playing"
+                        ? {
+                            borderColor: activeColor || "#1f4d90",
+                            backgroundColor: activeColor || "#1f4d90",
+                            color: "#ffffff",
+                          }
+                        : undefined
+                    }
                   >
                     Wuerfeln
                   </button>
@@ -790,14 +853,23 @@ export function KniffelApp() {
                             {room.players.map((player) => (
                               <th
                                 key={player.id}
-                                className={[
-                                  "border border-[#2a4f89]/70 px-3 py-2 text-center text-xs font-semibold uppercase tracking-[0.09em]",
+                                className="border border-[#2a4f89]/70 px-3 py-2 text-center text-xs font-semibold uppercase tracking-[0.09em] text-[#113a78]"
+                                style={
                                   room.currentPlayerId === player.id
-                                    ? "bg-[#d5e5fb] text-[#113a78]"
-                                    : "bg-[#e6d8ba] text-[#1d4a89]",
-                                ].join(" ")}
+                                    ? {
+                                        backgroundColor: `${player.color}35`,
+                                        borderBottom: `3px solid ${player.color}`,
+                                      }
+                                    : { backgroundColor: "#e6d8ba" }
+                                }
                               >
                                 <span className="flex items-center justify-center gap-1">
+                                  {room.currentPlayerId === player.id && (
+                                    <span
+                                      className="inline-block h-2 w-2 rounded-full flex-shrink-0"
+                                      style={{ backgroundColor: player.color }}
+                                    />
+                                  )}
                                   {player.icon && <span className="text-sm">{player.icon}</span>}
                                   {player.name}
                                 </span>
@@ -822,7 +894,7 @@ export function KniffelApp() {
                                 <div className="flex items-start gap-2">
                                   <span className="mt-0.5 text-lg text-[#1f4f93]">{row.icon}</span>
                                   <div>
-                                    <div className="font-semibold text-[#143f82]">{row.label}</div>
+                                    <div className="text-[15px] font-bold text-[#143f82]">{row.label}</div>
                                     <div className="text-xs text-[#355d98]">{row.description}</div>
                                   </div>
                                 </div>
