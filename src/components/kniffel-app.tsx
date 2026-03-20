@@ -333,128 +333,69 @@ function TimerBar({ turnStartedAt, timerSeconds }: { turnStartedAt: number; time
   );
 }
 
-// --- Chat Panel ---
-function ChatPanel({
-  messages,
-  onSend,
-  unreadCount,
+// --- Emoji Reactions ---
+interface FloatingReaction {
+  id: string;
+  emoji: string;
+  playerName: string;
+  playerColor: string;
+  playerIcon: string | null;
+}
+
+const REACTION_EMOJIS = ["👏", "😂", "🤬", "🎉", "🔥", "💀", "😤", "🥳"];
+
+function ReactionBar({
+  onReact,
+  reactions,
 }: {
-  messages: ChatMessage[];
-  onSend: (text: string) => void;
-  unreadCount: number;
+  onReact: (emoji: string) => void;
+  reactions: FloatingReaction[];
 }) {
-  const [open, setOpen] = useState(false);
-  const [text, setText] = useState("");
-  const scrollRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (open && scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [messages.length, open]);
-
-  const send = () => {
-    const t = text.trim();
-    if (!t) return;
-    onSend(t);
-    setText("");
-  };
-
   return (
     <>
-      {/* Toggle button */}
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        className="fixed bottom-4 right-4 z-40 flex h-12 w-12 items-center justify-center rounded-full border-2 border-[#2a4f89]/70 bg-[#f5ebd5] shadow-lg transition hover:bg-[#e6d8ba] md:bottom-6 md:right-6"
-      >
-        <span className="text-lg">💬</span>
-        {!open && unreadCount > 0 && (
-          <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#e74c3c] px-1 text-[10px] font-bold text-white">
-            {unreadCount > 99 ? "99+" : unreadCount}
-          </span>
-        )}
-      </button>
-
-      {/* Panel */}
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 20 }}
-            className="fixed bottom-20 right-4 z-40 flex w-80 max-w-[calc(100vw-2rem)] flex-col rounded-2xl border-2 border-[#2a4f89]/70 bg-[#f5ebd5]/95 shadow-xl backdrop-blur md:bottom-20 md:right-6"
-            style={{ maxHeight: "60vh" }}
-          >
-            <div className="border-b border-[#2a4f89]/40 px-4 py-2">
-              <span className="text-sm font-semibold text-[#123f84]">Chat</span>
-            </div>
-
-            <div ref={scrollRef} className="chat-scroll flex-1 overflow-y-auto px-3 py-2" style={{ minHeight: 120, maxHeight: "40vh" }}>
-              {messages.length === 0 && (
-                <p className="py-4 text-center text-xs text-[#6481ad]">Noch keine Nachrichten</p>
-              )}
-              {messages.map((msg) => (
-                <div key={msg.id} className={`mb-2 ${msg.isReaction ? "text-center" : ""}`}>
-                  {msg.isReaction ? (
-                    <span className="text-2xl">{msg.text}</span>
-                  ) : (
-                    <>
-                      <div className="flex items-center gap-1.5">
-                        {msg.playerIcon && <span className="text-xs">{msg.playerIcon}</span>}
-                        <span className="text-xs font-bold" style={{ color: msg.playerColor }}>
-                          {msg.playerName}
-                        </span>
-                        <span className="text-[10px] text-[#6481ad]">
-                          {new Date(msg.timestamp).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}
-                        </span>
-                      </div>
-                      <p className="mt-0.5 text-sm text-[#1d4a89]">{msg.text}</p>
-                    </>
-                  )}
-                </div>
-              ))}
-            </div>
-
-            {/* Quick reactions */}
-            <div className="flex justify-center gap-2 border-t border-[#2a4f89]/30 px-3 py-1.5">
-              {CHAT_REACTIONS.map((r) => (
-                <button
-                  key={r}
-                  type="button"
-                  onClick={() => onSend(r)}
-                  className="rounded-md px-2 py-1 text-lg transition hover:bg-[#e6d8ba]"
-                >
-                  {r}
-                </button>
-              ))}
-            </div>
-
-            {/* Text input */}
-            <div className="flex gap-2 border-t border-[#2a4f89]/30 px-3 py-2">
-              <input
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") send(); }}
-                placeholder="Nachricht..."
-                maxLength={500}
-                className="flex-1 rounded-md border border-[#2a4f89]/40 bg-[#f8eed8] px-2 py-1.5 text-sm text-[#123f84] outline-none placeholder:text-[#6481ad]"
-              />
-              <button
-                type="button"
-                onClick={send}
-                className="rounded-md bg-[#dde7f7] px-3 py-1.5 text-sm font-medium text-[#123f84] transition hover:bg-[#cfddf4]"
+      {/* Floating reactions */}
+      <div className="pointer-events-none fixed inset-0 z-50 overflow-hidden">
+        <AnimatePresence>
+          {reactions.map((r) => (
+            <motion.div
+              key={r.id}
+              initial={{ opacity: 1, y: 0, x: `${30 + Math.random() * 40}vw` }}
+              animate={{ opacity: 0, y: -200 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 2, ease: "easeOut" }}
+              className="absolute bottom-24 flex items-center gap-1"
+            >
+              <span className="text-3xl drop-shadow-lg">{r.emoji}</span>
+              <span
+                className="rounded-full bg-black/40 px-2 py-0.5 text-[10px] font-bold text-white backdrop-blur-sm"
               >
-                ↵
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+                {r.playerIcon || ""} {r.playerName}
+              </span>
+            </motion.div>
+          ))}
+        </AnimatePresence>
+      </div>
+
+      {/* Reaction button bar */}
+      <div className="fixed bottom-4 right-4 z-40 flex gap-1.5 rounded-full border-2 border-[#2a4f89]/60 bg-[#f5ebd5]/95 px-3 py-2 shadow-lg backdrop-blur md:bottom-6 md:right-6">
+        {REACTION_EMOJIS.map((emoji) => (
+          <button
+            key={emoji}
+            type="button"
+            onClick={() => onReact(emoji)}
+            className="rounded-full px-1 py-0.5 text-lg transition hover:scale-125 hover:bg-[#e6d8ba] active:scale-90"
+          >
+            {emoji}
+          </button>
+        ))}
+      </div>
     </>
   );
 }
 
+// ===================
+// MAIN COMPONENT
+// ===================
 // --- Animated Scoreboard ---
 function AnimatedScoreboard({
   room,
@@ -616,6 +557,7 @@ function AnimatedScoreboard({
 // ===================
 // MAIN COMPONENT
 // ===================
+
 export function KniffelApp() {
   const socket = getSocket();
   const searchParams = useSearchParams();
@@ -634,8 +576,7 @@ export function KniffelApp() {
   // Score confirmation state
 
   // Chat state
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [chatUnread, setChatUnread] = useState(0);
+  const [floatingReactions, setFloatingReactions] = useState<FloatingReaction[]>([]);
 
   // Achievement state
   const [achievements, setAchievements] = useState<Achievement[]>([]);
@@ -722,20 +663,24 @@ export function KniffelApp() {
       setRoom(incoming);
       localStorage.setItem(ROOM_CODE_KEY, incoming.code);
       // Sync chat from room state (for reconnects)
-      if (incoming.chatMessages && incoming.chatMessages.length > 0) {
-        setChatMessages(incoming.chatMessages);
-      }
+      // Reactions are ephemeral, no sync needed
       const url = new URL(window.location.href);
       url.searchParams.set("room", incoming.code);
       window.history.replaceState({}, "", url.toString());
     };
     const onActionError = (message: string) => setError(message);
     const onChatMessage = (msg: ChatMessage) => {
-      setChatMessages((prev) => {
-        const updated = [...prev, msg];
-        return updated.length > 50 ? updated.slice(-50) : updated;
-      });
-      setChatUnread((c) => c + 1);
+      const reaction: FloatingReaction = {
+        id: msg.id,
+        emoji: msg.text,
+        playerName: msg.playerName,
+        playerColor: msg.playerColor,
+        playerIcon: msg.playerIcon || null,
+      };
+      setFloatingReactions((prev) => [...prev, reaction]);
+      setTimeout(() => {
+        setFloatingReactions((prev) => prev.filter((r) => r.id !== reaction.id));
+      }, 2500);
       playChatPop();
     };
 
@@ -873,8 +818,7 @@ export function KniffelApp() {
   const clearRoomState = () => {
     localStorage.removeItem(ROOM_CODE_KEY);
     setRoom(null);
-    setChatMessages([]);
-    setChatUnread(0);
+    setFloatingReactions([]);
     setAchievements([]);
     earnedRef.current.clear();
     setIsSpectator(false);
@@ -1027,8 +971,7 @@ export function KniffelApp() {
 
   const handleSendChat = (text: string) => {
     if (!room) return;
-    socket.emit("chat:send", { code: room.code, text });
-    setChatUnread(0);
+    socket.emit("chat:send", { code: room.code, text, isReaction: true });
   };
 
   const shareUrl = room ? `${typeof window !== "undefined" ? window.location.origin : "https://kniffel.logge.top"}?room=${room.code}` : "";
@@ -1719,12 +1662,11 @@ export function KniffelApp() {
         )}
       </div>
 
-      {/* Chat */}
+      {/* Emoji Reactions */}
       {room && (
-        <ChatPanel
-          messages={chatMessages}
-          onSend={handleSendChat}
-          unreadCount={chatUnread}
+        <ReactionBar
+          onReact={(emoji) => { if (room) socket.emit("chat:send", { code: room.code, text: emoji, isReaction: true }); }}
+          reactions={floatingReactions}
         />
       )}
 
