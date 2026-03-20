@@ -1058,6 +1058,7 @@ export function KniffelApp() {
     const isMyCell = player.id === clientId && !isSpectator;
     const previewValue = scorePreview[row.category];
     const allowScore = room?.status === "playing" && isMyTurn && isMyCell && typeof score !== "number" && typeof previewValue === "number";
+    const isLowerSection = ["threeOfAKind","fourOfAKind","fullHouse","smallStraight","largeStraight","yahtzee","chance"].includes(row.category);
     const isFlashing = flashedCell?.playerId === player.id && flashedCell?.category === row.category;
     const isPending = pendingScore === row.category && isMyCell;
 
@@ -1084,8 +1085,17 @@ export function KniffelApp() {
           )}
         </AnimatePresence>
         {typeof score === "number" && (
-          <span className={["relative text-sm font-bold", score === 0 ? "text-[#b52f2f] line-through decoration-2" : "text-[#123f84]"].join(" ")}>
-            {score}
+          <span className={[
+            "relative text-sm",
+            score === 0
+              ? "font-normal text-[#9ba5b7] line-through decoration-1 opacity-50"
+              : isLowerSection && score >= 25
+                ? "font-extrabold text-[#0d6e3f]"
+                : isLowerSection && score >= 15
+                  ? "font-bold text-[#123f84]"
+                  : "font-bold text-[#123f84]",
+          ].join(" ")}>
+            {score === 50 && row.category === "yahtzee" ? "🎯 50" : score}
           </span>
         )}
         {allowScore && !isPending && (
@@ -1191,8 +1201,8 @@ export function KniffelApp() {
                 </div>
                 <div className="flex items-center gap-1.5">
                   {typeof score === "number" && (
-                    <span className={["text-base font-bold", score === 0 ? "text-[#b52f2f] line-through" : "text-[#123f84]"].join(" ")}>
-                      {score}
+                    <span className={["text-base", score === 0 ? "font-normal text-[#9ba5b7] line-through decoration-1 opacity-50" : score >= 25 ? "font-extrabold text-[#0d6e3f]" : "font-bold text-[#123f84]"].join(" ")}>
+                      {score === 50 && row.category === "yahtzee" ? "🎯 50" : score}
                     </span>
                   )}
                   {allowScore && !isPending && (
