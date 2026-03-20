@@ -28,6 +28,7 @@ import {
   playCelebration,
   playPlacementReveal,
   playChatPop,
+  playYourTurn,
 } from "@/lib/sounds";
 
 const CLIENT_ID_KEY = "kniffel-client-id";
@@ -640,15 +641,16 @@ export function KniffelApp() {
     setClientId(savedClientId);
     setName(savedName);
     const urlRoom = searchParams.get("room")?.toUpperCase();
-    setCodeInput(urlRoom || savedRoomCode);
+    const reconnectCode = urlRoom || savedRoomCode;
+    setCodeInput(reconnectCode);
     if (savedIcon) setSelectedIcon(savedIcon);
 
     const onConnect = () => {
       setConnected(true);
-      if (!savedRoomCode) return;
+      if (!reconnectCode) return;
       socket.emit(
         "room:reconnect",
-        { code: savedRoomCode, clientId: savedClientId, name: savedName, icon: savedIcon },
+        { code: reconnectCode, clientId: savedClientId, name: savedName, icon: savedIcon },
         (ack: AckResponse) => {
           if (!ack?.ok) {
             localStorage.removeItem(ROOM_CODE_KEY);
@@ -716,6 +718,15 @@ export function KniffelApp() {
   const isHost = Boolean(room && clientId && room.hostId === clientId);
   const isMyTurn = Boolean(!isSpectator && room && room.status === "playing" && room.currentPlayerId === clientId);
   const canRoll = Boolean(isMyTurn && room && room.turn.rollsLeft > 0);
+
+  // Play ping when it becomes your turn
+  const prevMyTurn = useRef(false);
+  useEffect(() => {
+    if (isMyTurn && !prevMyTurn.current) {
+      playYourTurn();
+    }
+    prevMyTurn.current = isMyTurn;
+  }, [isMyTurn]);
 
   const scorePreview = useMemo(() => {
     const preview: Partial<Record<Category, number>> = {};

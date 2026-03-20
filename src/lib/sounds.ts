@@ -256,3 +256,28 @@ export function playChatPop(): void {
     // Audio not available
   }
 }
+
+export function playYourTurn(): void {
+  try {
+    const ctx = getCtx();
+    const now = ctx.currentTime;
+
+    // Two-note ping: ascending "ding-ding"
+    const notes = [880, 1108.73]; // A5 → C#6
+    notes.forEach((freq, i) => {
+      const t = now + i * 0.15;
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.value = freq;
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0, t);
+      gain.gain.linearRampToValueAtTime(0.18, t + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.45);
+    });
+  } catch {
+    // Audio not available
+  }
+}
