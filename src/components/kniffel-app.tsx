@@ -1445,8 +1445,8 @@ export function KniffelApp() {
                   </motion.div>
                 )}
 
-                <div className="grid gap-4 lg:grid-cols-[1fr_auto]">
-                  {!isMyTurn && (
+                {!isMyTurn && (
+                  <div className="grid gap-4 lg:grid-cols-[1fr_auto]">
                     <div
                       className="rounded-[20px] border-2 border-[#2a4f89]/65 bg-[#f4e8cf]/90 p-4"
                       style={currentPlayer && room.status === "playing" ? { borderColor: `${currentPlayer.color}70` } : undefined}
@@ -1462,16 +1462,15 @@ export function KniffelApp() {
                             : "Warte auf Spieler"}
                       </p>
                     </div>
-                  )}
-
-                  <div className="rounded-[20px] border-2 border-[#2a4f89]/65 bg-[#f4e8cf]/90 px-4 py-3">
-                    <p className="text-xs uppercase tracking-[0.14em] text-[#315e99]">Spieler · Runde {Math.max(room.currentRound, 1)}/{room.maxRounds}</p>
-                    <p className="mt-1 text-sm text-[#214c8f]">
-                      {room.players.length} Teilnehmer · {room.maxRounds} Runden
-                      {room.timerEnabled && ` · ${room.timerSeconds}s Timer`}
-                    </p>
+                    <div className="rounded-[20px] border-2 border-[#2a4f89]/65 bg-[#f4e8cf]/90 px-4 py-3">
+                      <p className="text-xs uppercase tracking-[0.14em] text-[#315e99]">Spieler · Runde {Math.max(room.currentRound, 1)}/{room.maxRounds}</p>
+                      <p className="mt-1 text-sm text-[#214c8f]">
+                        {room.players.length} Teilnehmer · {room.maxRounds} Runden
+                        {room.timerEnabled && ` · ${room.timerSeconds}s Timer`}
+                      </p>
+                    </div>
                   </div>
-                </div>
+                )}
 
                 <div className="rounded-[22px] border-2 border-[#2a4f89]/65 bg-[#f4e8cf]/90 p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
