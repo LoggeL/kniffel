@@ -632,7 +632,6 @@ export function KniffelApp() {
   const [isSpectator, setIsSpectator] = useState(false);
 
   // Score confirmation state
-  const [pendingScore, setPendingScore] = useState<Category | null>(null);
 
   // Chat state
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -879,7 +878,6 @@ export function KniffelApp() {
     setAchievements([]);
     earnedRef.current.clear();
     setIsSpectator(false);
-    setPendingScore(null);
     const url = new URL(window.location.href);
     url.searchParams.delete("room");
     window.history.replaceState({}, "", url.toString());
@@ -964,18 +962,29 @@ export function KniffelApp() {
 
   const handleToggleHold = (index: number) => {
     if (!room) return;
+    // Optimistic update — instantly toggle hold in local state
+    setRoom((prev) => {
+      if (!prev) return prev;
+      const newHeld = [...prev.turn.held];
+      newHeld[index] = !newHeld[index];
+      return { ...prev, turn: { ...prev.turn, held: newHeld } };
+    });
     socket.emit("game:toggleHold", { code: room.code, index }, (ack: AckResponse) => {
-      if (!ack?.ok) setError(ack?.error || "Würfel konnte nicht gehalten werden.");
+      if (!ack?.ok) {
+        // Revert on failure
+        setRoom((prev) => {
+          if (!prev) return prev;
+          const reverted = [...prev.turn.held];
+          reverted[index] = !reverted[index];
+          return { ...prev, turn: { ...prev.turn, held: reverted } };
+        });
+        setError(ack?.error || "Würfel konnte nicht gehalten werden.");
+      }
     });
   };
 
-  const handleScoreSelect = (category: Category) => {
-    setPendingScore(category);
-  };
-
-  const handleScoreConfirm = () => {
-    if (!room || !pendingScore) return;
-    const category = pendingScore;
+  const handleScoreDirect = (category: Category) => {
+    if (!room) return;
     const celebKind = detectCelebration(category, room.turn.dice, me);
 
     if (me) {
@@ -997,12 +1006,8 @@ export function KniffelApp() {
         setCelebration(celebKind);
       }
     });
-    setPendingScore(null);
   };
 
-  const handleScoreCancel = () => {
-    setPendingScore(null);
-  };
 
   const handleRematch = () => {
     if (!room) return;
@@ -1060,7 +1065,6 @@ export function KniffelApp() {
     const allowScore = room?.status === "playing" && isMyTurn && isMyCell && typeof score !== "number" && typeof previewValue === "number";
     const isLowerSection = ["threeOfAKind","fourOfAKind","fullHouse","smallStraight","largeStraight","yahtzee","chance"].includes(row.category);
     const isFlashing = flashedCell?.playerId === player.id && flashedCell?.category === row.category;
-    const isPending = pendingScore === row.category && isMyCell;
 
     return (
       <td
@@ -1068,7 +1072,6 @@ export function KniffelApp() {
         className={[
           "relative border border-[#2a4f89]/65 px-3 py-2 text-center",
           room?.currentPlayerId === player.id ? "bg-[#e5efff]" : "bg-[#f7ecd8]",
-          isPending ? "animate-pulse-border" : "",
         ].join(" ")}
       >
         <AnimatePresence>
@@ -1098,36 +1101,17 @@ export function KniffelApp() {
             {score === 50 && row.category === "yahtzee" ? "🎯 50" : score}
           </span>
         )}
-        {allowScore && !isPending && (
+        {allowScore && (
           <button
             type="button"
-            onClick={() => handleScoreSelect(row.category)}
+            onClick={() => handleScoreDirect(row.category)}
             className="relative min-h-[36px] min-w-[36px] rounded-lg px-2.5 py-1.5 text-sm font-bold text-white shadow-md transition hover:brightness-110 active:scale-95"
             style={{ backgroundColor: me?.color || "#1f4d90" }}
           >
             {previewValue}
           </button>
         )}
-        {isPending && (
-          <div className="flex items-center justify-center gap-1">
-            <span className="text-sm font-bold text-[#123f84]">{previewValue}</span>
-            <button
-              type="button"
-              onClick={handleScoreConfirm}
-              className="rounded bg-[#2ecc71] px-2 py-1 text-xs font-bold text-white transition hover:bg-[#27ae60]"
-            >
-              ✓
-            </button>
-            <button
-              type="button"
-              onClick={handleScoreCancel}
-              className="rounded bg-[#e74c3c] px-2 py-1 text-xs font-bold text-white transition hover:bg-[#c0392b]"
-            >
-              ✗
-            </button>
-          </div>
-        )}
-        {typeof score !== "number" && !allowScore && !isPending && (
+        {typeof score !== "number" && !allowScore && (
           <span className="text-base font-medium text-[#9ba5b7]">—</span>
         )}
       </td>
@@ -1181,14 +1165,13 @@ export function KniffelApp() {
             const score = viewPlayer.scores[row.category];
             const previewValue = isViewingMe ? scorePreview[row.category] : undefined;
             const allowScore = room.status === "playing" && isMyTurn && isViewingMe && typeof score !== "number" && typeof previewValue === "number";
-            const isPending = pendingScore === row.category && isViewingMe;
-
+        
             return (
               <div
                 key={row.category}
                 className={[
                   "flex items-center justify-between rounded-lg border px-3 py-2.5",
-                  isPending ? "animate-pulse-border border-[#1f4d90]" : "border-[#2a4f89]/40",
+                  "border-[#2a4f89]/40",
                   room.currentPlayerId === viewPlayer.id ? "bg-[#e5efff]" : "bg-[#f7ecd8]",
                 ].join(" ")}
               >
@@ -1205,24 +1188,17 @@ export function KniffelApp() {
                       {score === 50 && row.category === "yahtzee" ? "🎯 50" : score}
                     </span>
                   )}
-                  {allowScore && !isPending && (
+                  {allowScore && (
                     <button
                       type="button"
-                      onClick={() => handleScoreSelect(row.category)}
+                      onClick={() => handleScoreDirect(row.category)}
                       className="rounded-lg px-3 py-1.5 text-sm font-bold text-white shadow-md active:scale-95"
                       style={{ backgroundColor: me?.color || "#1f4d90" }}
                     >
                       {previewValue}
                     </button>
                   )}
-                  {isPending && (
-                    <div className="flex items-center gap-1">
-                      <span className="text-sm font-bold text-[#123f84]">{previewValue}</span>
-                      <button type="button" onClick={handleScoreConfirm} className="rounded bg-[#2ecc71] px-2 py-1 text-xs font-bold text-white">✓</button>
-                      <button type="button" onClick={handleScoreCancel} className="rounded bg-[#e74c3c] px-2 py-1 text-xs font-bold text-white">✗</button>
-                    </div>
-                  )}
-                  {typeof score !== "number" && !allowScore && !isPending && (
+                  {typeof score !== "number" && !allowScore && (
                     <span className="text-base text-[#9ba5b7]">—</span>
                   )}
                 </div>
@@ -1246,14 +1222,13 @@ export function KniffelApp() {
             const score = viewPlayer.scores[row.category];
             const previewValue = isViewingMe ? scorePreview[row.category] : undefined;
             const allowScore = room.status === "playing" && isMyTurn && isViewingMe && typeof score !== "number" && typeof previewValue === "number";
-            const isPending = pendingScore === row.category && isViewingMe;
-
+        
             return (
               <div
                 key={row.category}
                 className={[
                   "flex items-center justify-between rounded-lg border px-3 py-2.5",
-                  isPending ? "animate-pulse-border border-[#1f4d90]" : "border-[#2a4f89]/40",
+                  "border-[#2a4f89]/40",
                   room.currentPlayerId === viewPlayer.id ? "bg-[#e5efff]" : "bg-[#f7ecd8]",
                 ].join(" ")}
               >
@@ -1267,24 +1242,17 @@ export function KniffelApp() {
                       {score}
                     </span>
                   )}
-                  {allowScore && !isPending && (
+                  {allowScore && (
                     <button
                       type="button"
-                      onClick={() => handleScoreSelect(row.category)}
+                      onClick={() => handleScoreDirect(row.category)}
                       className="rounded-lg px-3 py-1.5 text-sm font-bold text-white shadow-md active:scale-95"
                       style={{ backgroundColor: me?.color || "#1f4d90" }}
                     >
                       {previewValue}
                     </button>
                   )}
-                  {isPending && (
-                    <div className="flex items-center gap-1">
-                      <span className="text-sm font-bold text-[#123f84]">{previewValue}</span>
-                      <button type="button" onClick={handleScoreConfirm} className="rounded bg-[#2ecc71] px-2 py-1 text-xs font-bold text-white">✓</button>
-                      <button type="button" onClick={handleScoreCancel} className="rounded bg-[#e74c3c] px-2 py-1 text-xs font-bold text-white">✗</button>
-                    </div>
-                  )}
-                  {typeof score !== "number" && !allowScore && !isPending && (
+                  {typeof score !== "number" && !allowScore && (
                     <span className="text-base text-[#9ba5b7]">—</span>
                   )}
                 </div>
@@ -1584,31 +1552,6 @@ export function KniffelApp() {
                 </div>
 
                 {/* Score confirmation bar */}
-                {pendingScore && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="flex items-center justify-center gap-3 rounded-xl border-2 border-[#1f4d90]/60 bg-[#dde7f7] px-4 py-3"
-                  >
-                    <span className="text-sm font-medium text-[#123f84]">
-                      {ALL_SCORE_ROWS.find((r) => r.category === pendingScore)?.label}: {scorePreview[pendingScore]} Punkte
-                    </span>
-                    <button
-                      type="button"
-                      onClick={handleScoreConfirm}
-                      className="rounded-md bg-[#2ecc71] px-4 py-2 text-sm font-bold text-white transition hover:bg-[#27ae60]"
-                    >
-                      Bestätigen ✓
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleScoreCancel}
-                      className="rounded-md bg-[#e74c3c] px-4 py-2 text-sm font-bold text-white transition hover:bg-[#c0392b]"
-                    >
-                      Abbrechen ✗
-                    </button>
-                  </motion.div>
-                )}
 
                 {/* Mobile scorecard */}
                 {renderMobileScorecard()}
