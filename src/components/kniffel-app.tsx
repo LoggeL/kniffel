@@ -41,7 +41,6 @@ const ICON_CHOICES = [
   "🌟", "🔥", "💎", "🎲", "🎯", "🍀", "🌈", "⚡", "🎵", "🦄",
 ];
 
-const CHAT_REACTIONS = ["👏", "😂", "🤬", "🎉"];
 
 interface ScoreCategoryRow {
   category: Category;
@@ -69,7 +68,6 @@ const LOWER_SCORE_ROWS: ScoreCategoryRow[] = [
   { category: "chance", label: "Chance", description: "Alle Augen zählen" },
 ];
 
-const ALL_SCORE_ROWS = [...UPPER_SCORE_ROWS, ...LOWER_SCORE_ROWS];
 
 function buildClientId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -155,6 +153,27 @@ function sendTurnNotification() {
 }
 
 // --- Celebration Overlay ---
+// Pre-computed confetti particles (avoid Math.random in render)
+const CONFETTI_PARTICLES = Array.from({ length: 20 }, (_, i) => ({
+  yOff: Math.random() * 200,
+  x1: (Math.random() - 0.5) * 400,
+  x2: (Math.random() - 0.5) * 600,
+  rot: Math.random() * 720,
+  dur: 2 + Math.random(),
+  delay: Math.random() * 0.3,
+  left: 30 + Math.random() * 40,
+  color: ["#ff6b6b", "#ffd93d", "#6bcb77", "#4d96ff", "#ff6bff", "#ff9f43"][i % 6],
+}));
+
+const WINNER_CONFETTI = Array.from({ length: 30 }, (_, i) => ({
+  x1: Math.random() * 100,
+  x2: Math.random() * 100,
+  rot: Math.random() * 720,
+  dur: 2 + Math.random() * 2,
+  delay: Math.random() * 0.5,
+  color: ["#ff6b6b", "#ffd93d", "#6bcb77", "#4d96ff", "#ff6bff", "#ff9f43"][i % 6],
+}));
+
 function CelebrationOverlay({ kind, onDone }: { kind: CelebrationKind; onDone: () => void }) {
   useEffect(() => {
     const timeout = setTimeout(onDone, kind === "kniffel" ? 3000 : 2000);
@@ -214,22 +233,22 @@ function CelebrationOverlay({ kind, onDone }: { kind: CelebrationKind; onDone: (
         </div>
         {kind === "kniffel" && (
           <div className="mt-4 flex justify-center gap-2">
-            {Array.from({ length: 20 }).map((_, i) => (
+            {CONFETTI_PARTICLES.map((p, i) => (
               <motion.div
                 key={i}
                 initial={{ y: 0, x: 0, opacity: 1, scale: 1 }}
                 animate={{
-                  y: [0, -(100 + Math.random() * 200), 300],
-                  x: [(Math.random() - 0.5) * 400, (Math.random() - 0.5) * 600],
+                  y: [0, -(100 + p.yOff), 300],
+                  x: [p.x1, p.x2],
                   opacity: [1, 1, 0],
                   scale: [1, 1.2, 0.5],
-                  rotate: [0, Math.random() * 720],
+                  rotate: [0, p.rot],
                 }}
-                transition={{ duration: 2 + Math.random(), delay: Math.random() * 0.3 }}
+                transition={{ duration: p.dur, delay: p.delay }}
                 className="absolute h-3 w-3 rounded-sm"
                 style={{
-                  backgroundColor: ["#ff6b6b", "#ffd93d", "#6bcb77", "#4d96ff", "#ff6bff", "#ff9f43"][i % 6],
-                  left: `${30 + Math.random() * 40}%`,
+                  backgroundColor: p.color,
+                  left: `${p.left}%`,
                   top: "50%",
                 }}
               />
@@ -360,7 +379,7 @@ function ReactionBar({
           {reactions.map((r) => (
             <motion.div
               key={r.id}
-              initial={{ opacity: 1, y: 0, x: `${30 + Math.random() * 40}vw` }}
+              initial={{ opacity: 1, y: 0, x: `${30 + (r.id.charCodeAt(0) % 40)}vw` }}
               animate={{ opacity: 0, y: -200 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 2, ease: "easeOut" }}
@@ -400,14 +419,12 @@ function ReactionBar({
 // --- Animated Scoreboard ---
 function AnimatedScoreboard({
   room,
-  clientId,
   achievements,
   onLeave,
   onRematch,
   isHost,
 }: {
   room: RoomState;
-  clientId: string;
   achievements: Achievement[];
   onLeave: () => void;
   onRematch: () => void;
@@ -512,20 +529,20 @@ function AnimatedScoreboard({
         {/* Confetti for winner */}
         {showConfetti && (
           <div className="pointer-events-none absolute inset-0 overflow-hidden">
-            {Array.from({ length: 30 }).map((_, i) => (
+            {WINNER_CONFETTI.map((p, i) => (
               <motion.div
                 key={i}
-                initial={{ y: -20, x: `${Math.random() * 100}%`, opacity: 1 }}
+                initial={{ y: -20, x: `${p.x1}%`, opacity: 1 }}
                 animate={{
                   y: "120%",
-                  x: `${Math.random() * 100}%`,
-                  rotate: Math.random() * 720,
+                  x: `${p.x2}%`,
+                  rotate: p.rot,
                   opacity: 0,
                 }}
-                transition={{ duration: 2 + Math.random() * 2, delay: Math.random() * 0.5 }}
+                transition={{ duration: p.dur, delay: p.delay }}
                 className="absolute h-2 w-2 rounded-sm"
                 style={{
-                  backgroundColor: ["#ff6b6b", "#ffd93d", "#6bcb77", "#4d96ff", "#ff6bff", "#ff9f43"][i % 6],
+                  backgroundColor: p.color,
                 }}
               />
             ))}
@@ -978,11 +995,6 @@ export function KniffelApp() {
   const handleTimerToggle = (enabled: boolean) => {
     if (!room) return;
     socket.emit("room:settings", { code: room.code, timerEnabled: enabled });
-  };
-
-  const handleSendChat = (text: string) => {
-    if (!room) return;
-    socket.emit("chat:send", { code: room.code, text, isReaction: true });
   };
 
   const shareUrl = room ? `${typeof window !== "undefined" ? window.location.origin : "https://kniffel.logge.top"}?room=${room.code}` : "";
@@ -1725,7 +1737,6 @@ export function KniffelApp() {
         {room?.status === "finished" && (
           <AnimatedScoreboard
             room={room}
-            clientId={clientId}
             achievements={achievements}
             onLeave={handleLeaveRoom}
             onRematch={handleRematch}
