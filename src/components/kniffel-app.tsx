@@ -1048,10 +1048,23 @@ export function KniffelApp() {
           <button
             type="button"
             onClick={() => handleScoreDirect(row.category)}
-            className="relative min-h-[36px] min-w-[36px] rounded-lg px-2.5 py-1.5 text-sm font-bold text-white shadow-md transition hover:brightness-110 active:scale-95"
-            style={{ backgroundColor: me?.color || "#1f4d90" }}
+            className={[
+              "relative min-h-[36px] min-w-[36px] rounded-lg px-2.5 py-1.5 text-sm font-bold shadow-md transition hover:brightness-110 active:scale-95",
+              previewValue === 0
+                ? "bg-[#b0a89a] text-white/70 shadow-none text-xs"
+                : previewValue >= 25 || (previewValue === 50 && row.category === "yahtzee")
+                  ? "text-white ring-2 ring-yellow-300/60 animate-pulse"
+                  : "text-white",
+            ].join(" ")}
+            style={{
+              backgroundColor: previewValue === 0
+                ? undefined
+                : previewValue >= 25
+                  ? "#16a34a"
+                  : me?.color || "#1f4d90",
+            }}
           >
-            {previewValue}
+            {previewValue === 0 ? "—" : previewValue}
           </button>
         )}
         {typeof score !== "number" && !allowScore && (
@@ -1135,10 +1148,17 @@ export function KniffelApp() {
                     <button
                       type="button"
                       onClick={() => handleScoreDirect(row.category)}
-                      className="rounded-lg px-3 py-1.5 text-sm font-bold text-white shadow-md active:scale-95"
-                      style={{ backgroundColor: me?.color || "#1f4d90" }}
+                      className={[
+                        "rounded-lg px-3 py-1.5 text-sm font-bold shadow-md active:scale-95",
+                        previewValue === 0
+                          ? "bg-[#b0a89a] text-white/70 shadow-none text-xs"
+                          : previewValue >= 25
+                            ? "text-white ring-2 ring-yellow-300/60 animate-pulse"
+                            : "text-white",
+                      ].join(" ")}
+                      style={{ backgroundColor: previewValue === 0 ? undefined : previewValue >= 25 ? "#16a34a" : me?.color || "#1f4d90" }}
                     >
-                      {previewValue}
+                      {previewValue === 0 ? "—" : previewValue}
                     </button>
                   )}
                   {typeof score !== "number" && !allowScore && (
@@ -1189,10 +1209,17 @@ export function KniffelApp() {
                     <button
                       type="button"
                       onClick={() => handleScoreDirect(row.category)}
-                      className="rounded-lg px-3 py-1.5 text-sm font-bold text-white shadow-md active:scale-95"
-                      style={{ backgroundColor: me?.color || "#1f4d90" }}
+                      className={[
+                        "rounded-lg px-3 py-1.5 text-sm font-bold shadow-md active:scale-95",
+                        previewValue === 0
+                          ? "bg-[#b0a89a] text-white/70 shadow-none text-xs"
+                          : previewValue >= 25
+                            ? "text-white ring-2 ring-yellow-300/60 animate-pulse"
+                            : "text-white",
+                      ].join(" ")}
+                      style={{ backgroundColor: previewValue === 0 ? undefined : previewValue >= 25 ? "#16a34a" : me?.color || "#1f4d90" }}
                     >
-                      {previewValue}
+                      {previewValue === 0 ? "—" : previewValue}
                     </button>
                   )}
                   {typeof score !== "number" && !allowScore && (
