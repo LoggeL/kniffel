@@ -1472,6 +1472,7 @@ export function KniffelApp() {
                     rollSequence={displayRollSeq}
                     onToggleHold={handleToggleHold}
                     activeColor={activeColor}
+                    playerIcon={currentPlayer?.icon}
                   />
 
                   {!isSpectator && (

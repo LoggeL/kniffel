@@ -10,6 +10,7 @@ interface DiceBoxProps {
   rollSequence: number;
   onToggleHold: (index: number) => void;
   activeColor?: string;
+  playerIcon?: string | null;
 }
 
 function clampDiceValue(value: number): number {
@@ -53,15 +54,17 @@ const DOT_POSITIONS: Record<number, [number, number][]> = {
   ],
 };
 
-function DiceFace({ value, held, rolling, disabled, onClick, dieIndex }: {
+function DiceFace({ value, held, rolling, disabled, onClick, dieIndex, playerIcon }: {
   value: number;
   held: boolean;
   rolling: boolean;
   disabled: boolean;
   onClick: () => void;
   dieIndex: number;
+  playerIcon?: string | null;
 }) {
-  const dots = DOT_POSITIONS[clampDiceValue(value)] ?? DOT_POSITIONS[1];
+  const showIcon = value === 0 && playerIcon;
+  const dots = showIcon ? [] : (DOT_POSITIONS[clampDiceValue(value)] ?? DOT_POSITIONS[1]);
 
   // Map grid positions to percentage offsets
   const pct = (pos: number) => pos === 0 ? "20%" : pos === 1 ? "50%" : "80%";
@@ -111,12 +114,18 @@ function DiceFace({ value, held, rolling, disabled, onClick, dieIndex }: {
             }}
           />
         ))}
+        {showIcon && (
+          <div className="absolute inset-0 flex items-center justify-center text-2xl sm:text-3xl opacity-60">
+            {playerIcon}
+          </div>
+        )}
       </div>
     </div>
   );
+
 }
 
-export function DiceBox({ dice, held, disabled, rollSequence, onToggleHold, activeColor }: DiceBoxProps) {
+export function DiceBox({ dice, held, disabled, rollSequence, onToggleHold, activeColor, playerIcon }: DiceBoxProps) {
   const prevRollSequence = useRef(rollSequence);
   const [rollingDice, setRollingDice] = useState<boolean[]>(() => Array(dice.length).fill(false));
 
@@ -172,6 +181,7 @@ export function DiceBox({ dice, held, disabled, rollSequence, onToggleHold, acti
                 dieIndex={index}
             disabled={disabled}
             onClick={() => onToggleHold(index)}
+            playerIcon={playerIcon}
           />
         ))}
       </div>
