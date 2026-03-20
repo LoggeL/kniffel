@@ -1482,24 +1482,26 @@ export function KniffelApp() {
                 )}
 
                 <div className="grid gap-4 lg:grid-cols-[1fr_auto]">
-                  <div
-                    className="rounded-[20px] border-2 border-[#2a4f89]/65 bg-[#f4e8cf]/90 p-4"
-                    style={currentPlayer && room.status === "playing" ? { borderColor: `${currentPlayer.color}70` } : undefined}
-                  >
-                    <p className="text-sm text-[#315e99]">
-                      Runde {Math.max(room.currentRound, 1)} / {room.maxRounds}
-                    </p>
-                    <p className="mt-1 text-lg font-semibold text-[#123f84]">
-                      {room.status === "finished"
-                        ? "Spiel beendet"
-                        : currentPlayer
-                          ? `${currentPlayer.name} ist am Zug`
-                          : "Warte auf Spieler"}
-                    </p>
-                  </div>
+                  {!isMyTurn && (
+                    <div
+                      className="rounded-[20px] border-2 border-[#2a4f89]/65 bg-[#f4e8cf]/90 p-4"
+                      style={currentPlayer && room.status === "playing" ? { borderColor: `${currentPlayer.color}70` } : undefined}
+                    >
+                      <p className="text-sm text-[#315e99]">
+                        Runde {Math.max(room.currentRound, 1)} / {room.maxRounds}
+                      </p>
+                      <p className="mt-1 text-lg font-semibold text-[#123f84]">
+                        {room.status === "finished"
+                          ? "Spiel beendet"
+                          : currentPlayer
+                            ? `${currentPlayer.name} ist am Zug`
+                            : "Warte auf Spieler"}
+                      </p>
+                    </div>
+                  )}
 
                   <div className="rounded-[20px] border-2 border-[#2a4f89]/65 bg-[#f4e8cf]/90 px-4 py-3">
-                    <p className="text-xs uppercase tracking-[0.14em] text-[#315e99]">Spieler</p>
+                    <p className="text-xs uppercase tracking-[0.14em] text-[#315e99]">Spieler · Runde {Math.max(room.currentRound, 1)}/{room.maxRounds}</p>
                     <p className="mt-1 text-sm text-[#214c8f]">
                       {room.players.length} Teilnehmer · {room.maxRounds} Runden
                       {room.timerEnabled && ` · ${room.timerSeconds}s Timer`}
