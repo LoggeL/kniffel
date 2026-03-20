@@ -1,15 +1,24 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   CATEGORIES,
+  UPPER_CATEGORIES,
   type Category,
   calculateCategoryScore,
 } from "@/lib/kniffel";
 import { getSocket } from "@/lib/socket";
-import type { AckResponse, PlayerState, RoomState } from "@/lib/types";
+import type {
+  AckResponse,
+  Achievement,
+  AchievementType,
+  ChatMessage,
+  PlayerState,
+  RoomState,
+} from "@/lib/types";
+import { ACHIEVEMENT_DEFS } from "@/lib/types";
 import { DiceBox } from "@/components/dice-box";
 import {
   playDiceRoll,
@@ -17,6 +26,8 @@ import {
   playScoreEntry,
   playKniffelFanfare,
   playCelebration,
+  playPlacementReveal,
+  playChatPop,
 } from "@/lib/sounds";
 
 const CLIENT_ID_KEY = "kniffel-client-id";
@@ -28,6 +39,8 @@ const ICON_CHOICES = [
   "🐱", "🐶", "🦊", "🐼", "🐨", "🦁", "🐸", "🐧", "🦉", "🐝",
   "🌟", "🔥", "💎", "🎲", "🎯", "🍀", "🌈", "⚡", "🎵", "🦄",
 ];
+
+const CHAT_REACTIONS = ["👏", "😂", "🤬", "🎉"];
 
 interface ScoreCategoryRow {
   category: Category;
@@ -55,6 +68,8 @@ const LOWER_SCORE_ROWS: ScoreCategoryRow[] = [
   { category: "chance", label: "Chance", description: "Alle Augen zählen" },
 ];
 
+const ALL_SCORE_ROWS = [...UPPER_SCORE_ROWS, ...LOWER_SCORE_ROWS];
+
 function buildClientId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return crypto.randomUUID();
@@ -64,7 +79,7 @@ function buildClientId(): string {
 
 function findPlayer(room: RoomState | null, playerId: string): PlayerState | null {
   if (!room) return null;
-  return room.players.find((player) => player.id === playerId) || null;
+  return room.players.find((p) => p.id === playerId) || null;
 }
 
 type CelebrationKind = "kniffel" | "fullHouse" | "largeStraight" | "bonus" | null;
@@ -92,8 +107,7 @@ function detectCelebration(
       if (j === "1,2,3,4,5" || j === "2,3,4,5,6") return "largeStraight";
     }
   }
-  // Check if scoring this would push upper total to 63+
-  if (player && ["ones", "twos", "threes", "fours", "fives", "sixes"].includes(category)) {
+  if (player && (UPPER_CATEGORIES as readonly string[]).includes(category)) {
     const currentUpper = player.upperTotal;
     const scoreVal = calculateCategoryScore(category, dice);
     if (currentUpper < 63 && currentUpper + scoreVal >= 63) return "bonus";
@@ -101,7 +115,45 @@ function detectCelebration(
   return null;
 }
 
+// --- Haptic feedback ---
+function vibrate(pattern: number | number[]) {
+  try {
+    if (navigator.vibrate) navigator.vibrate(pattern);
+  } catch {
+    // not available
+  }
+}
 
+// --- Push notification ---
+let notifPermission: NotificationPermission = "default";
+
+function requestNotifPermission() {
+  if (typeof Notification === "undefined") return;
+  if (Notification.permission === "granted") {
+    notifPermission = "granted";
+    return;
+  }
+  if (Notification.permission !== "denied") {
+    Notification.requestPermission().then((p) => {
+      notifPermission = p;
+    });
+  }
+}
+
+function sendTurnNotification() {
+  if (typeof Notification === "undefined" || notifPermission !== "granted") return;
+  if (document.visibilityState !== "hidden") return;
+  try {
+    new Notification("Du bist dran! 🎲", {
+      body: "Dein Zug bei Kniffel Multiplayer",
+      icon: "/favicon.ico",
+    });
+  } catch {
+    // ignore
+  }
+}
+
+// --- Celebration Overlay ---
 function CelebrationOverlay({ kind, onDone }: { kind: CelebrationKind; onDone: () => void }) {
   useEffect(() => {
     const timeout = setTimeout(onDone, kind === "kniffel" ? 3000 : 2000);
@@ -110,33 +162,26 @@ function CelebrationOverlay({ kind, onDone }: { kind: CelebrationKind; onDone: (
 
   if (!kind) return null;
 
-  const configs: Record<
-    string,
-    { text: string; color: string; bg: string; particles: string }
-  > = {
+  const configs: Record<string, { text: string; color: string; bg: string }> = {
     kniffel: {
       text: "KNIFFEL!",
       color: "#ffd700",
       bg: "radial-gradient(circle, rgba(255,215,0,0.3) 0%, transparent 70%)",
-      particles: "confetti",
     },
     fullHouse: {
       text: "Full House!",
       color: "#e74c3c",
       bg: "radial-gradient(circle, rgba(231,76,60,0.2) 0%, transparent 70%)",
-      particles: "sparkle",
     },
     largeStraight: {
       text: "Große Straße!",
       color: "#3498db",
       bg: "radial-gradient(circle, rgba(52,152,219,0.2) 0%, transparent 70%)",
-      particles: "rainbow",
     },
     bonus: {
       text: "Bonus! +35",
       color: "#f39c12",
       bg: "radial-gradient(circle, rgba(243,156,18,0.2) 0%, transparent 70%)",
-      particles: "stars",
     },
   };
 
@@ -152,11 +197,7 @@ function CelebrationOverlay({ kind, onDone }: { kind: CelebrationKind; onDone: (
     >
       <motion.div
         initial={{ scale: 0.3, opacity: 0, rotate: -10 }}
-        animate={{
-          scale: [0.3, 1.3, 1],
-          opacity: [0, 1, 1],
-          rotate: [-10, 5, 0],
-        }}
+        animate={{ scale: [0.3, 1.3, 1], opacity: [0, 1, 1], rotate: [-10, 5, 0] }}
         transition={{ duration: 0.6, times: [0, 0.6, 1] }}
         className="text-center"
       >
@@ -175,12 +216,7 @@ function CelebrationOverlay({ kind, onDone }: { kind: CelebrationKind; onDone: (
             {Array.from({ length: 20 }).map((_, i) => (
               <motion.div
                 key={i}
-                initial={{
-                  y: 0,
-                  x: 0,
-                  opacity: 1,
-                  scale: 1,
-                }}
+                initial={{ y: 0, x: 0, opacity: 1, scale: 1 }}
                 animate={{
                   y: [0, -(100 + Math.random() * 200), 300],
                   x: [(Math.random() - 0.5) * 400, (Math.random() - 0.5) * 600],
@@ -188,10 +224,7 @@ function CelebrationOverlay({ kind, onDone }: { kind: CelebrationKind; onDone: (
                   scale: [1, 1.2, 0.5],
                   rotate: [0, Math.random() * 720],
                 }}
-                transition={{
-                  duration: 2 + Math.random(),
-                  delay: Math.random() * 0.3,
-                }}
+                transition={{ duration: 2 + Math.random(), delay: Math.random() * 0.3 }}
                 className="absolute h-3 w-3 rounded-sm"
                 style={{
                   backgroundColor: ["#ff6b6b", "#ffd93d", "#6bcb77", "#4d96ff", "#ff6bff", "#ff9f43"][i % 6],
@@ -207,13 +240,8 @@ function CelebrationOverlay({ kind, onDone }: { kind: CelebrationKind; onDone: (
   );
 }
 
-function IconPicker({
-  selected,
-  onSelect,
-}: {
-  selected: string | null;
-  onSelect: (icon: string) => void;
-}) {
+// --- Icon Picker ---
+function IconPicker({ selected, onSelect }: { selected: string | null; onSelect: (icon: string) => void }) {
   return (
     <div className="mt-3">
       <p className="mb-2 text-xs uppercase tracking-[0.18em] text-[#315e99]">Dein Icon</p>
@@ -238,19 +266,16 @@ function IconPicker({
   );
 }
 
+// --- Blurred Score ---
 function BlurredScore({ value }: { value: number }) {
   const [revealed, setRevealed] = useState(false);
-
   return (
     <span
       onClick={() => setRevealed(!revealed)}
       onMouseEnter={() => setRevealed(true)}
       onMouseLeave={() => setRevealed(false)}
       className="cursor-pointer select-none transition-all duration-300"
-      style={{
-        filter: revealed ? "none" : "blur(8px)",
-        opacity: revealed ? 1 : 0.7,
-      }}
+      style={{ filter: revealed ? "none" : "blur(8px)", opacity: revealed ? 1 : 0.7 }}
       title="Klick zum Aufdecken"
     >
       {value}
@@ -258,6 +283,339 @@ function BlurredScore({ value }: { value: number }) {
   );
 }
 
+// --- Achievement Toast ---
+function AchievementToast({ achievement, onDone }: { achievement: Achievement; onDone: () => void }) {
+  useEffect(() => {
+    const t = setTimeout(onDone, 3500);
+    return () => clearTimeout(t);
+  }, [onDone]);
+
+  return (
+    <motion.div
+      initial={{ x: 100, opacity: 0, scale: 0.8 }}
+      animate={{ x: 0, opacity: 1, scale: 1 }}
+      exit={{ x: 100, opacity: 0, scale: 0.8 }}
+      className="flex items-center gap-3 rounded-xl border-2 border-[#2a4f89]/60 bg-[#f5ebd5] px-4 py-3 shadow-lg"
+    >
+      <span className="text-2xl">{achievement.icon}</span>
+      <div>
+        <div className="text-sm font-bold text-[#123f84]">{achievement.label}</div>
+        <div className="text-xs text-[#315e99]">{achievement.description}</div>
+      </div>
+    </motion.div>
+  );
+}
+
+// --- Timer Bar ---
+function TimerBar({ turnStartedAt, timerSeconds }: { turnStartedAt: number; timerSeconds: number }) {
+  const [pct, setPct] = useState(100);
+
+  useEffect(() => {
+    const update = () => {
+      const elapsed = (Date.now() - turnStartedAt) / 1000;
+      const remaining = Math.max(0, 1 - elapsed / timerSeconds);
+      setPct(remaining * 100);
+    };
+    update();
+    const iv = setInterval(update, 200);
+    return () => clearInterval(iv);
+  }, [turnStartedAt, timerSeconds]);
+
+  const color = pct > 50 ? "#2ecc71" : pct > 20 ? "#f39c12" : "#e74c3c";
+
+  return (
+    <div className="mb-2 h-2 w-full overflow-hidden rounded-full bg-[#e6d8ba]">
+      <div
+        className="h-full rounded-full transition-all duration-200"
+        style={{ width: `${pct}%`, backgroundColor: color }}
+      />
+    </div>
+  );
+}
+
+// --- Chat Panel ---
+function ChatPanel({
+  messages,
+  onSend,
+  unreadCount,
+}: {
+  messages: ChatMessage[];
+  onSend: (text: string) => void;
+  unreadCount: number;
+}) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (open && scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages.length, open]);
+
+  const send = () => {
+    const t = text.trim();
+    if (!t) return;
+    onSend(t);
+    setText("");
+  };
+
+  return (
+    <>
+      {/* Toggle button */}
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="fixed bottom-4 right-4 z-40 flex h-12 w-12 items-center justify-center rounded-full border-2 border-[#2a4f89]/70 bg-[#f5ebd5] shadow-lg transition hover:bg-[#e6d8ba] md:bottom-6 md:right-6"
+      >
+        <span className="text-lg">💬</span>
+        {!open && unreadCount > 0 && (
+          <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#e74c3c] px-1 text-[10px] font-bold text-white">
+            {unreadCount > 99 ? "99+" : unreadCount}
+          </span>
+        )}
+      </button>
+
+      {/* Panel */}
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            className="fixed bottom-20 right-4 z-40 flex w-80 max-w-[calc(100vw-2rem)] flex-col rounded-2xl border-2 border-[#2a4f89]/70 bg-[#f5ebd5]/95 shadow-xl backdrop-blur md:bottom-20 md:right-6"
+            style={{ maxHeight: "60vh" }}
+          >
+            <div className="border-b border-[#2a4f89]/40 px-4 py-2">
+              <span className="text-sm font-semibold text-[#123f84]">Chat</span>
+            </div>
+
+            <div ref={scrollRef} className="chat-scroll flex-1 overflow-y-auto px-3 py-2" style={{ minHeight: 120, maxHeight: "40vh" }}>
+              {messages.length === 0 && (
+                <p className="py-4 text-center text-xs text-[#6481ad]">Noch keine Nachrichten</p>
+              )}
+              {messages.map((msg) => (
+                <div key={msg.id} className={`mb-2 ${msg.isReaction ? "text-center" : ""}`}>
+                  {msg.isReaction ? (
+                    <span className="text-2xl">{msg.text}</span>
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-1.5">
+                        {msg.playerIcon && <span className="text-xs">{msg.playerIcon}</span>}
+                        <span className="text-xs font-bold" style={{ color: msg.playerColor }}>
+                          {msg.playerName}
+                        </span>
+                        <span className="text-[10px] text-[#6481ad]">
+                          {new Date(msg.timestamp).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                      </div>
+                      <p className="mt-0.5 text-sm text-[#1d4a89]">{msg.text}</p>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Quick reactions */}
+            <div className="flex justify-center gap-2 border-t border-[#2a4f89]/30 px-3 py-1.5">
+              {CHAT_REACTIONS.map((r) => (
+                <button
+                  key={r}
+                  type="button"
+                  onClick={() => onSend(r)}
+                  className="rounded-md px-2 py-1 text-lg transition hover:bg-[#e6d8ba]"
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
+
+            {/* Text input */}
+            <div className="flex gap-2 border-t border-[#2a4f89]/30 px-3 py-2">
+              <input
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") send(); }}
+                placeholder="Nachricht..."
+                maxLength={500}
+                className="flex-1 rounded-md border border-[#2a4f89]/40 bg-[#f8eed8] px-2 py-1.5 text-sm text-[#123f84] outline-none placeholder:text-[#6481ad]"
+              />
+              <button
+                type="button"
+                onClick={send}
+                className="rounded-md bg-[#dde7f7] px-3 py-1.5 text-sm font-medium text-[#123f84] transition hover:bg-[#cfddf4]"
+              >
+                ↵
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
+  );
+}
+
+// --- Animated Scoreboard ---
+function AnimatedScoreboard({
+  room,
+  clientId,
+  achievements,
+  onLeave,
+  onRematch,
+  isHost,
+}: {
+  room: RoomState;
+  clientId: string;
+  achievements: Achievement[];
+  onLeave: () => void;
+  onRematch: () => void;
+  isHost: boolean;
+}) {
+  const sorted = useMemo(
+    () => room.players.slice().sort((a, b) => b.total - a.total),
+    [room.players]
+  );
+  const [revealedCount, setRevealedCount] = useState(0);
+  const [showConfetti, setShowConfetti] = useState(false);
+  const revealStarted = useRef(false);
+
+  useEffect(() => {
+    if (revealStarted.current) return;
+    revealStarted.current = true;
+
+    const total = sorted.length;
+    // Reveal from last place to first
+    let i = 0;
+    const reveal = () => {
+      if (i >= total) {
+        setShowConfetti(true);
+        return;
+      }
+      const place = total - i;
+      playPlacementReveal(place);
+      i++;
+      setRevealedCount(i);
+      setTimeout(reveal, place === 1 ? 600 : 1200);
+    };
+    setTimeout(reveal, 800);
+  }, [sorted.length]);
+
+  // Build revealed list (reversed: last place first, winner last)
+  const revealOrder = useMemo(() => [...sorted].reverse(), [sorted]);
+  const revealed = revealOrder.slice(0, revealedCount);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[#e2d2af]/85 p-4 backdrop-blur-[2px]"
+    >
+      <motion.div
+        initial={{ y: 30, scale: 0.96, opacity: 0 }}
+        animate={{ y: 0, scale: 1, opacity: 1 }}
+        exit={{ y: 20, opacity: 0 }}
+        className="w-full max-w-xl rounded-[26px] border-2 border-[#2a4f89]/70 bg-[#f5ebd5] p-6 text-[#123f84] shadow-[0_24px_54px_-38px_rgba(15,23,42,0.9)]"
+      >
+        <h2 className="text-2xl font-semibold text-[#123f84]">Spiel vorbei</h2>
+
+        <div className="mt-4 space-y-2">
+          {revealed.map((player, idx) => {
+            const place = sorted.indexOf(player) + 1;
+            const isWinner = room.winnerIds.includes(player.id);
+            const playerAchievements = achievements.filter((a) => a.playerId === player.id);
+
+            return (
+              <motion.div
+                key={player.id}
+                initial={{ x: -40, opacity: 0 }}
+                animate={{ x: 0, opacity: 1 }}
+                transition={{ duration: 0.4, delay: idx * 0.1 }}
+                className={[
+                  "flex items-center justify-between rounded-md border px-3 py-2",
+                  isWinner
+                    ? "border-[#ffd700] bg-[#fdf6e0]"
+                    : "border-[#2a4f89]/50 bg-[#ebddbe]",
+                ].join(" ")}
+              >
+                <div className="flex items-center gap-2 text-[#123f84]">
+                  <span className="w-8 text-center font-bold">
+                    {isWinner && showConfetti ? "👑" : `${place}.`}
+                  </span>
+                  {player.icon && <span>{player.icon}</span>}
+                  <span className={isWinner ? "font-bold" : ""}>{player.name}</span>
+                  {playerAchievements.length > 0 && (
+                    <span className="flex gap-0.5">
+                      {playerAchievements.map((a) => (
+                        <span key={a.type} title={a.label} className="text-sm">
+                          {a.icon}
+                        </span>
+                      ))}
+                    </span>
+                  )}
+                </div>
+                <motion.span
+                  className="font-semibold text-[#1f5aab]"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.3 }}
+                >
+                  {player.total}
+                </motion.span>
+              </motion.div>
+            );
+          })}
+        </div>
+
+        {/* Confetti for winner */}
+        {showConfetti && (
+          <div className="pointer-events-none absolute inset-0 overflow-hidden">
+            {Array.from({ length: 30 }).map((_, i) => (
+              <motion.div
+                key={i}
+                initial={{ y: -20, x: `${Math.random() * 100}%`, opacity: 1 }}
+                animate={{
+                  y: "120%",
+                  x: `${Math.random() * 100}%`,
+                  rotate: Math.random() * 720,
+                  opacity: 0,
+                }}
+                transition={{ duration: 2 + Math.random() * 2, delay: Math.random() * 0.5 }}
+                className="absolute h-2 w-2 rounded-sm"
+                style={{
+                  backgroundColor: ["#ff6b6b", "#ffd93d", "#6bcb77", "#4d96ff", "#ff6bff", "#ff9f43"][i % 6],
+                }}
+              />
+            ))}
+          </div>
+        )}
+
+        <div className="mt-6 flex flex-wrap gap-2">
+          {isHost && (
+            <button
+              type="button"
+              onClick={onRematch}
+              className="rounded-md border border-[#2a4f89]/65 bg-[#dde9fa] px-4 py-2 text-sm font-medium text-[#123f84] transition hover:bg-[#cfddf2]"
+            >
+              Nochmal spielen
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onLeave}
+            className="rounded-md border border-[#2a4f89]/65 bg-[#e8d8b7] px-4 py-2 text-sm font-medium text-[#123f84] transition hover:bg-[#ddcba8]"
+          >
+            Zur Startseite
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// ===================
+// MAIN COMPONENT
+// ===================
 export function KniffelApp() {
   const socket = getSocket();
   const searchParams = useSearchParams();
@@ -271,22 +629,66 @@ export function KniffelApp() {
   const [selectedIcon, setSelectedIcon] = useState<string | null>(null);
   const [celebration, setCelebration] = useState<CelebrationKind>(null);
   const [flashedCell, setFlashedCell] = useState<{ playerId: string; category: Category } | null>(null);
+  const [isSpectator, setIsSpectator] = useState(false);
+
+  // Score confirmation state
+  const [pendingScore, setPendingScore] = useState<Category | null>(null);
+
+  // Chat state
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatUnread, setChatUnread] = useState(0);
+
+  // Achievement state
+  const [achievements, setAchievements] = useState<Achievement[]>([]);
+  const [achievementToasts, setAchievementToasts] = useState<Achievement[]>([]);
+  const earnedRef = useRef<Set<string>>(new Set());
+
+  // Mobile scorecard: selected player tab
+  const [mobileScorePlayer, setMobileScorePlayer] = useState<string | null>(null);
 
   // Track previous rollSequence to keep dice in place after scoring
   const prevRollSeqRef = useRef(0);
   const [displayRollSeq, setDisplayRollSeq] = useState(0);
 
+  // Previous turn player for notification
+  const prevCurrentPlayerRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (!room) return;
-    // Only update display roll sequence when server actually rolls
     if (room.turn.rollSequence !== prevRollSeqRef.current && room.turn.rollSequence > 0) {
       setDisplayRollSeq(room.turn.rollSequence);
-      // Play dice sounds
       playDiceRoll();
+      vibrate(50);
       setTimeout(() => playDiceLand(), 800);
     }
     prevRollSeqRef.current = room.turn.rollSequence;
   }, [room?.turn.rollSequence, room]);
+
+  // Push notification when it becomes my turn
+  useEffect(() => {
+    if (!room || !clientId) return;
+    const currentPid = room.currentPlayerId;
+    if (currentPid !== prevCurrentPlayerRef.current) {
+      prevCurrentPlayerRef.current = currentPid;
+      if (currentPid === clientId && room.status === "playing") {
+        sendTurnNotification();
+        if (document.visibilityState === "hidden") {
+          document.title = "🎲 Dein Zug! - Kniffel";
+        }
+      }
+    }
+  }, [room?.currentPlayerId, room?.status, clientId]);
+
+  // Restore title when tab becomes visible
+  useEffect(() => {
+    const handler = () => {
+      if (document.visibilityState === "visible") {
+        document.title = "Kniffel Multiplayer";
+      }
+    };
+    document.addEventListener("visibilitychange", handler);
+    return () => document.removeEventListener("visibilitychange", handler);
+  }, []);
 
   useEffect(() => {
     const savedClientId = localStorage.getItem(CLIENT_ID_KEY) || buildClientId();
@@ -297,7 +699,6 @@ export function KniffelApp() {
     localStorage.setItem(CLIENT_ID_KEY, savedClientId);
     setClientId(savedClientId);
     setName(savedName);
-    // URL ?room= param takes priority over saved room code
     const urlRoom = searchParams.get("room")?.toUpperCase();
     setCodeInput(urlRoom || savedRoomCode);
     if (savedIcon) setSelectedIcon(savedIcon);
@@ -321,17 +722,29 @@ export function KniffelApp() {
     const onRoomUpdate = (incoming: RoomState) => {
       setRoom(incoming);
       localStorage.setItem(ROOM_CODE_KEY, incoming.code);
-      // Update URL with room code (without reload)
+      // Sync chat from room state (for reconnects)
+      if (incoming.chatMessages && incoming.chatMessages.length > 0) {
+        setChatMessages(incoming.chatMessages);
+      }
       const url = new URL(window.location.href);
       url.searchParams.set("room", incoming.code);
       window.history.replaceState({}, "", url.toString());
     };
     const onActionError = (message: string) => setError(message);
+    const onChatMessage = (msg: ChatMessage) => {
+      setChatMessages((prev) => {
+        const updated = [...prev, msg];
+        return updated.length > 50 ? updated.slice(-50) : updated;
+      });
+      setChatUnread((c) => c + 1);
+      playChatPop();
+    };
 
     socket.on("connect", onConnect);
     socket.on("disconnect", onDisconnect);
     socket.on("room:update", onRoomUpdate);
     socket.on("action:error", onActionError);
+    socket.on("chat:message", onChatMessage);
     socket.connect();
 
     return () => {
@@ -339,8 +752,9 @@ export function KniffelApp() {
       socket.off("disconnect", onDisconnect);
       socket.off("room:update", onRoomUpdate);
       socket.off("action:error", onActionError);
+      socket.off("chat:message", onChatMessage);
     };
-  }, [socket]);
+  }, [socket, searchParams]);
 
   useEffect(() => {
     if (!error) return;
@@ -356,7 +770,7 @@ export function KniffelApp() {
 
   const activeColor = currentPlayer?.color || undefined;
   const isHost = Boolean(room && clientId && room.hostId === clientId);
-  const isMyTurn = Boolean(room && room.status === "playing" && room.currentPlayerId === clientId);
+  const isMyTurn = Boolean(!isSpectator && room && room.status === "playing" && room.currentPlayerId === clientId);
   const canRoll = Boolean(isMyTurn && room && room.turn.rollsLeft > 0);
 
   const scorePreview = useMemo(() => {
@@ -369,20 +783,80 @@ export function KniffelApp() {
     return preview;
   }, [room, me, isMyTurn]);
 
-  const winnerText = useMemo(() => {
-    if (!room || room.status !== "finished" || room.winnerIds.length === 0) return "";
-    return room.winnerIds
-      .map((id) => room.players.find((p) => p.id === id)?.name)
-      .filter(Boolean)
-      .join(", ");
-  }, [room]);
+  // --- Achievement detection ---
+  const detectAchievements = useCallback(
+    (category: Category, dice: number[], player: PlayerState) => {
+      const newAchievements: Achievement[] = [];
+      const key = (type: AchievementType) => `${player.id}-${type}`;
+
+      // Kniffel
+      if (category === "yahtzee") {
+        const counts = new Map<number, number>();
+        for (const d of dice) counts.set(d, (counts.get(d) || 0) + 1);
+        if ([...counts.values()].some((c) => c >= 5) && !earnedRef.current.has(key("kniffel"))) {
+          earnedRef.current.add(key("kniffel"));
+          newAchievements.push({ ...ACHIEVEMENT_DEFS.kniffel, type: "kniffel", playerId: player.id });
+        }
+      }
+
+      // Full House Party
+      if (category === "fullHouse") {
+        const score = calculateCategoryScore("fullHouse", dice);
+        if (score > 0 && !earnedRef.current.has(key("fullHouseParty"))) {
+          earnedRef.current.add(key("fullHouseParty"));
+          newAchievements.push({ ...ACHIEVEMENT_DEFS.fullHouseParty, type: "fullHouseParty", playerId: player.id });
+        }
+      }
+
+      // Null Punkte
+      const scoreVal = calculateCategoryScore(category, dice);
+      if (scoreVal === 0 && !earnedRef.current.has(key("nullPunkte"))) {
+        earnedRef.current.add(key("nullPunkte"));
+        newAchievements.push({ ...ACHIEVEMENT_DEFS.nullPunkte, type: "nullPunkte", playerId: player.id });
+      }
+
+      // Perfekter Wurf (scored on first roll)
+      if (room && room.turn.rollsUsed === 1 && !earnedRef.current.has(key("perfekterWurf"))) {
+        earnedRef.current.add(key("perfekterWurf"));
+        newAchievements.push({ ...ACHIEVEMENT_DEFS.perfekterWurf, type: "perfekterWurf", playerId: player.id });
+      }
+
+      // Bonus
+      if ((UPPER_CATEGORIES as readonly string[]).includes(category)) {
+        const currentUpper = player.upperTotal;
+        if (currentUpper < 63 && currentUpper + scoreVal >= 63 && !earnedRef.current.has(key("bonus"))) {
+          earnedRef.current.add(key("bonus"));
+          newAchievements.push({ ...ACHIEVEMENT_DEFS.bonus, type: "bonus", playerId: player.id });
+        }
+      }
+
+      // Straßenfeger (check after scoring)
+      if (category === "smallStraight" || category === "largeStraight") {
+        const hasSmall = typeof player.scores.smallStraight === "number" && player.scores.smallStraight > 0;
+        const hasLarge = typeof player.scores.largeStraight === "number" && player.scores.largeStraight > 0;
+        const justScoredSmall = category === "smallStraight" && calculateCategoryScore("smallStraight", dice) > 0;
+        const justScoredLarge = category === "largeStraight" && calculateCategoryScore("largeStraight", dice) > 0;
+
+        if (
+          ((hasSmall || justScoredSmall) && (hasLarge || justScoredLarge)) &&
+          !earnedRef.current.has(key("strassenfeger"))
+        ) {
+          earnedRef.current.add(key("strassenfeger"));
+          newAchievements.push({ ...ACHIEVEMENT_DEFS.strassenfeger, type: "strassenfeger", playerId: player.id });
+        }
+      }
+
+      if (newAchievements.length > 0) {
+        setAchievements((prev) => [...prev, ...newAchievements]);
+        setAchievementToasts((prev) => [...prev, ...newAchievements]);
+      }
+    },
+    [room]
+  );
 
   const requireName = (): string | null => {
     const trimmed = name.trim();
-    if (!trimmed) {
-      setError("Bitte gib zuerst deinen Namen ein.");
-      return null;
-    }
+    if (!trimmed) { setError("Bitte gib zuerst deinen Namen ein."); return null; }
     localStorage.setItem(PLAYER_NAME_KEY, trimmed);
     return trimmed;
   };
@@ -400,7 +874,12 @@ export function KniffelApp() {
   const clearRoomState = () => {
     localStorage.removeItem(ROOM_CODE_KEY);
     setRoom(null);
-    // Clear URL param
+    setChatMessages([]);
+    setChatUnread(0);
+    setAchievements([]);
+    earnedRef.current.clear();
+    setIsSpectator(false);
+    setPendingScore(null);
     const url = new URL(window.location.href);
     url.searchParams.delete("room");
     window.history.replaceState({}, "", url.toString());
@@ -415,14 +894,12 @@ export function KniffelApp() {
     const trimmedName = requireName();
     if (!trimmedName) return;
     const ensuredClientId = ensureClientId();
+    requestNotifPermission();
     socket.emit(
       "room:create",
       { name: trimmedName, clientId: ensuredClientId, icon: selectedIcon },
       (ack: AckResponse) => {
-        if (!ack?.ok || !ack.code) {
-          setError(ack?.error || "Raum konnte nicht erstellt werden.");
-          return;
-        }
+        if (!ack?.ok || !ack.code) { setError(ack?.error || "Raum konnte nicht erstellt werden."); return; }
         localStorage.setItem(ROOM_CODE_KEY, ack.code);
       }
     );
@@ -434,15 +911,30 @@ export function KniffelApp() {
     const ensuredClientId = ensureClientId();
     const code = codeInput.trim().toUpperCase();
     if (!code) { setError("Bitte gib einen Raumcode ein."); return; }
+    requestNotifPermission();
     socket.emit(
       "room:join",
       { code, name: trimmedName, clientId: ensuredClientId, icon: selectedIcon },
       (ack: AckResponse) => {
-        if (!ack?.ok || !ack.code) {
-          setError(ack?.error || "Raum konnte nicht betreten werden.");
-          return;
-        }
+        if (!ack?.ok || !ack.code) { setError(ack?.error || "Raum konnte nicht betreten werden."); return; }
         localStorage.setItem(ROOM_CODE_KEY, ack.code);
+      }
+    );
+  };
+
+  const handleSpectate = () => {
+    const trimmedName = requireName();
+    if (!trimmedName) return;
+    const ensuredClientId = ensureClientId();
+    const code = codeInput.trim().toUpperCase();
+    if (!code) { setError("Bitte gib einen Raumcode ein."); return; }
+    socket.emit(
+      "room:spectate",
+      { code, name: trimmedName, clientId: ensuredClientId, icon: selectedIcon },
+      (ack: AckResponse) => {
+        if (!ack?.ok || !ack.code) { setError(ack?.error || "Zuschauen nicht möglich."); return; }
+        localStorage.setItem(ROOM_CODE_KEY, ack.code);
+        setIsSpectator(true);
       }
     );
   };
@@ -464,6 +956,7 @@ export function KniffelApp() {
 
   const handleRoll = () => {
     if (!room) return;
+    requestNotifPermission();
     socket.emit("game:roll", { code: room.code }, (ack: AckResponse) => {
       if (!ack?.ok) setError(ack?.error || "Wurf fehlgeschlagen.");
     });
@@ -472,30 +965,65 @@ export function KniffelApp() {
   const handleToggleHold = (index: number) => {
     if (!room) return;
     socket.emit("game:toggleHold", { code: room.code, index }, (ack: AckResponse) => {
-      if (!ack?.ok) setError(ack?.error || "Wuerfel konnte nicht gehalten werden.");
+      if (!ack?.ok) setError(ack?.error || "Würfel konnte nicht gehalten werden.");
     });
   };
 
-  const handleScore = (category: Category) => {
-    if (!room) return;
-    // Detect celebration before scoring
+  const handleScoreSelect = (category: Category) => {
+    setPendingScore(category);
+  };
+
+  const handleScoreConfirm = () => {
+    if (!room || !pendingScore) return;
+    const category = pendingScore;
     const celebKind = detectCelebration(category, room.turn.dice, me);
+
+    if (me) {
+      detectAchievements(category, room.turn.dice, me);
+    }
+
     socket.emit("game:score", { code: room.code, category }, (ack: AckResponse) => {
-      if (!ack?.ok) {
-        setError(ack?.error || "Punkte konnten nicht eingetragen werden.");
-        return;
-      }
+      if (!ack?.ok) { setError(ack?.error || "Punkte konnten nicht eingetragen werden."); return; }
       setFlashedCell({ playerId: clientId, category });
       setTimeout(() => setFlashedCell(null), 1500);
       playScoreEntry();
+      vibrate([50, 30, 50]);
       if (celebKind === "kniffel") {
         playKniffelFanfare();
+        vibrate(200);
         setCelebration("kniffel");
       } else if (celebKind) {
         playCelebration();
         setCelebration(celebKind);
       }
     });
+    setPendingScore(null);
+  };
+
+  const handleScoreCancel = () => {
+    setPendingScore(null);
+  };
+
+  const handleRematch = () => {
+    if (!room) return;
+    socket.emit("game:rematch", { code: room.code }, (ack: AckResponse) => {
+      if (!ack?.ok) setError(ack?.error || "Rematch fehlgeschlagen.");
+      else {
+        setAchievements([]);
+        earnedRef.current.clear();
+      }
+    });
+  };
+
+  const handleTimerToggle = (enabled: boolean) => {
+    if (!room) return;
+    socket.emit("room:settings", { code: room.code, timerEnabled: enabled });
+  };
+
+  const handleSendChat = (text: string) => {
+    if (!room) return;
+    socket.emit("chat:send", { code: room.code, text });
+    setChatUnread(0);
   };
 
   const shareUrl = room ? `${typeof window !== "undefined" ? window.location.origin : "https://kniffel.logge.top"}?room=${room.code}` : "";
@@ -506,7 +1034,7 @@ export function KniffelApp() {
       await navigator.clipboard.writeText(shareUrl);
       setError("Einladungslink kopiert! 🔗");
     } catch {
-      setError("Kopieren nicht verfuegbar.");
+      setError("Kopieren nicht verfügbar.");
     }
   };
 
@@ -519,29 +1047,19 @@ export function KniffelApp() {
           text: `Komm in meine Kniffel-Runde! Code: ${room.code}`,
           url: shareUrl,
         });
-      } catch {
-        // User cancelled share
-      }
+      } catch { /* cancelled */ }
     } else {
       copyCode();
     }
   };
 
-  const renderScoreCell = (
-    player: PlayerState,
-    row: ScoreCategoryRow
-  ) => {
+  const renderScoreCell = (player: PlayerState, row: ScoreCategoryRow) => {
     const score = player.scores[row.category];
-    const isMyCell = player.id === clientId;
+    const isMyCell = player.id === clientId && !isSpectator;
     const previewValue = scorePreview[row.category];
-    const allowScore =
-      room?.status === "playing" &&
-      isMyTurn &&
-      isMyCell &&
-      typeof score !== "number" &&
-      typeof previewValue === "number";
-    const isFlashing =
-      flashedCell?.playerId === player.id && flashedCell?.category === row.category;
+    const allowScore = room?.status === "playing" && isMyTurn && isMyCell && typeof score !== "number" && typeof previewValue === "number";
+    const isFlashing = flashedCell?.playerId === player.id && flashedCell?.category === row.category;
+    const isPending = pendingScore === row.category && isMyCell;
 
     return (
       <td
@@ -549,6 +1067,7 @@ export function KniffelApp() {
         className={[
           "relative border border-[#2a4f89]/65 px-3 py-2 text-center",
           room?.currentPlayerId === player.id ? "bg-[#e5efff]" : "bg-[#f7ecd8]",
+          isPending ? "animate-pulse-border" : "",
         ].join(" ")}
       >
         <AnimatePresence>
@@ -565,29 +1084,210 @@ export function KniffelApp() {
           )}
         </AnimatePresence>
         {typeof score === "number" && (
-          <span
-            className={[
-              "relative text-sm font-bold",
-              score === 0 ? "text-[#b52f2f] line-through decoration-2" : "text-[#123f84]",
-            ].join(" ")}
-          >
+          <span className={["relative text-sm font-bold", score === 0 ? "text-[#b52f2f] line-through decoration-2" : "text-[#123f84]"].join(" ")}>
             {score}
           </span>
         )}
-        {allowScore && (
+        {allowScore && !isPending && (
           <button
             type="button"
-            onClick={() => handleScore(row.category)}
+            onClick={() => handleScoreSelect(row.category)}
             className="relative min-h-[36px] min-w-[36px] rounded-lg px-2.5 py-1.5 text-sm font-bold text-white shadow-md transition hover:brightness-110 active:scale-95"
             style={{ backgroundColor: me?.color || "#1f4d90" }}
           >
             {previewValue}
           </button>
         )}
-        {typeof score !== "number" && !allowScore && (
+        {isPending && (
+          <div className="flex items-center justify-center gap-1">
+            <span className="text-sm font-bold text-[#123f84]">{previewValue}</span>
+            <button
+              type="button"
+              onClick={handleScoreConfirm}
+              className="rounded bg-[#2ecc71] px-2 py-1 text-xs font-bold text-white transition hover:bg-[#27ae60]"
+            >
+              ✓
+            </button>
+            <button
+              type="button"
+              onClick={handleScoreCancel}
+              className="rounded bg-[#e74c3c] px-2 py-1 text-xs font-bold text-white transition hover:bg-[#c0392b]"
+            >
+              ✗
+            </button>
+          </div>
+        )}
+        {typeof score !== "number" && !allowScore && !isPending && (
           <span className="text-base font-medium text-[#9ba5b7]">—</span>
         )}
       </td>
+    );
+  };
+
+  // Mobile score card rendering
+  const renderMobileScorecard = () => {
+    if (!room) return null;
+    const viewPlayer = mobileScorePlayer
+      ? room.players.find((p) => p.id === mobileScorePlayer) || room.players[0]
+      : me || room.players[0];
+    if (!viewPlayer) return null;
+
+    const isViewingMe = viewPlayer.id === clientId && !isSpectator;
+
+    return (
+      <div className="md:hidden">
+        {/* Player tabs */}
+        <div className="mb-3 flex gap-1 overflow-x-auto pb-1">
+          {room.players.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => setMobileScorePlayer(p.id)}
+              className={[
+                "flex-shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition",
+                (mobileScorePlayer || me?.id || room.players[0]?.id) === p.id
+                  ? "border-2 text-white"
+                  : "border border-[#2a4f89]/40 bg-[#f4e9d1] text-[#123f84]",
+              ].join(" ")}
+              style={
+                (mobileScorePlayer || me?.id || room.players[0]?.id) === p.id
+                  ? { backgroundColor: p.color, borderColor: p.color }
+                  : undefined
+              }
+            >
+              {p.icon && <span className="mr-1">{p.icon}</span>}
+              {p.name}
+              {room.currentPlayerId === p.id && " 🎲"}
+            </button>
+          ))}
+        </div>
+
+        {/* Score cards */}
+        <div className="space-y-1.5">
+          <div className="rounded-lg border border-[#2a4f89]/50 bg-[#e6d8ba] px-3 py-1.5 text-xs font-semibold uppercase tracking-wider">
+            Oberer Teil
+          </div>
+          {UPPER_SCORE_ROWS.map((row) => {
+            const score = viewPlayer.scores[row.category];
+            const previewValue = isViewingMe ? scorePreview[row.category] : undefined;
+            const allowScore = room.status === "playing" && isMyTurn && isViewingMe && typeof score !== "number" && typeof previewValue === "number";
+            const isPending = pendingScore === row.category && isViewingMe;
+
+            return (
+              <div
+                key={row.category}
+                className={[
+                  "flex items-center justify-between rounded-lg border px-3 py-2.5",
+                  isPending ? "animate-pulse-border border-[#1f4d90]" : "border-[#2a4f89]/40",
+                  room.currentPlayerId === viewPlayer.id ? "bg-[#e5efff]" : "bg-[#f7ecd8]",
+                ].join(" ")}
+              >
+                <div className="flex items-center gap-2">
+                  {row.icon && <span className="text-base">{row.icon}</span>}
+                  <div>
+                    <div className="text-sm font-bold text-[#143f82]">{row.label}</div>
+                    <div className="text-[11px] text-[#355d98]">{row.description}</div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  {typeof score === "number" && (
+                    <span className={["text-base font-bold", score === 0 ? "text-[#b52f2f] line-through" : "text-[#123f84]"].join(" ")}>
+                      {score}
+                    </span>
+                  )}
+                  {allowScore && !isPending && (
+                    <button
+                      type="button"
+                      onClick={() => handleScoreSelect(row.category)}
+                      className="rounded-lg px-3 py-1.5 text-sm font-bold text-white shadow-md active:scale-95"
+                      style={{ backgroundColor: me?.color || "#1f4d90" }}
+                    >
+                      {previewValue}
+                    </button>
+                  )}
+                  {isPending && (
+                    <div className="flex items-center gap-1">
+                      <span className="text-sm font-bold text-[#123f84]">{previewValue}</span>
+                      <button type="button" onClick={handleScoreConfirm} className="rounded bg-[#2ecc71] px-2 py-1 text-xs font-bold text-white">✓</button>
+                      <button type="button" onClick={handleScoreCancel} className="rounded bg-[#e74c3c] px-2 py-1 text-xs font-bold text-white">✗</button>
+                    </div>
+                  )}
+                  {typeof score !== "number" && !allowScore && !isPending && (
+                    <span className="text-base text-[#9ba5b7]">—</span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+
+          <div className="flex justify-between rounded-lg border border-[#2a4f89]/50 bg-[#ece0c5] px-3 py-2">
+            <span className="text-sm font-semibold text-[#184587]">Oberer Teil</span>
+            <span className="font-bold text-[#123f84]">{viewPlayer.upperTotal}</span>
+          </div>
+          <div className="flex justify-between rounded-lg border border-[#2a4f89]/50 bg-[#ece0c5] px-3 py-2">
+            <span className="text-sm text-[#1f4f93]">Bonus (≥63)</span>
+            <span className="font-bold text-[#123f84]">{viewPlayer.bonus}</span>
+          </div>
+
+          <div className="rounded-lg border border-[#2a4f89]/50 bg-[#dccba8] px-3 py-1.5 text-xs font-semibold uppercase tracking-wider">
+            Unterer Teil
+          </div>
+          {LOWER_SCORE_ROWS.map((row) => {
+            const score = viewPlayer.scores[row.category];
+            const previewValue = isViewingMe ? scorePreview[row.category] : undefined;
+            const allowScore = room.status === "playing" && isMyTurn && isViewingMe && typeof score !== "number" && typeof previewValue === "number";
+            const isPending = pendingScore === row.category && isViewingMe;
+
+            return (
+              <div
+                key={row.category}
+                className={[
+                  "flex items-center justify-between rounded-lg border px-3 py-2.5",
+                  isPending ? "animate-pulse-border border-[#1f4d90]" : "border-[#2a4f89]/40",
+                  room.currentPlayerId === viewPlayer.id ? "bg-[#e5efff]" : "bg-[#f7ecd8]",
+                ].join(" ")}
+              >
+                <div>
+                  <div className="text-sm font-bold text-[#143f82]">{row.label}</div>
+                  <div className="text-[11px] text-[#355d98]">{row.description}</div>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  {typeof score === "number" && (
+                    <span className={["text-base font-bold", score === 0 ? "text-[#b52f2f] line-through" : "text-[#123f84]"].join(" ")}>
+                      {score}
+                    </span>
+                  )}
+                  {allowScore && !isPending && (
+                    <button
+                      type="button"
+                      onClick={() => handleScoreSelect(row.category)}
+                      className="rounded-lg px-3 py-1.5 text-sm font-bold text-white shadow-md active:scale-95"
+                      style={{ backgroundColor: me?.color || "#1f4d90" }}
+                    >
+                      {previewValue}
+                    </button>
+                  )}
+                  {isPending && (
+                    <div className="flex items-center gap-1">
+                      <span className="text-sm font-bold text-[#123f84]">{previewValue}</span>
+                      <button type="button" onClick={handleScoreConfirm} className="rounded bg-[#2ecc71] px-2 py-1 text-xs font-bold text-white">✓</button>
+                      <button type="button" onClick={handleScoreCancel} className="rounded bg-[#e74c3c] px-2 py-1 text-xs font-bold text-white">✗</button>
+                    </div>
+                  )}
+                  {typeof score !== "number" && !allowScore && !isPending && (
+                    <span className="text-base text-[#9ba5b7]">—</span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+
+          <div className="flex justify-between rounded-lg border-2 border-[#2a4f89]/70 bg-[#d6c39c] px-3 py-2.5">
+            <span className="text-base font-bold text-[#0f366f]">Endsumme</span>
+            <span className="text-base font-extrabold text-[#0f366f]">{viewPlayer.total}</span>
+          </div>
+        </div>
+      </div>
     );
   };
 
@@ -607,16 +1307,21 @@ export function KniffelApp() {
             <h1 className="text-2xl font-semibold tracking-tight text-[#123f84] sm:text-3xl">
               Kniffel Mehrspieler
             </h1>
-            <p className="text-sm text-[#335d99]">Klassische Gewinnkarte fuer 2 bis 6 Spieler</p>
+            <p className="text-sm text-[#335d99]">
+              Klassische Gewinnkarte für 1 bis 6 Spieler
+              {isSpectator && <span className="ml-2 rounded bg-[#dde7f7] px-2 py-0.5 text-xs">Zuschauer</span>}
+            </p>
           </div>
-          <div className="flex items-center gap-2 rounded-full border border-[#2a4f89]/60 bg-[#f3e7cd] px-3 py-1 text-xs uppercase tracking-[0.12em] text-[#315e99]">
-            <span
-              className={[
-                "h-2 w-2 rounded-full",
-                connected ? "bg-[#1f5aab] shadow-[0_0_8px_rgba(32,84,165,0.5)]" : "bg-[#b65353]",
-              ].join(" ")}
-            />
-            {connected ? "Verbunden" : "Getrennt"}
+          <div className="flex items-center gap-3">
+            {room && room.spectatorCount > 0 && (
+              <span className="rounded-full border border-[#2a4f89]/50 bg-[#f3e7cd] px-2.5 py-1 text-xs text-[#315e99]">
+                👁 {room.spectatorCount}
+              </span>
+            )}
+            <div className="flex items-center gap-2 rounded-full border border-[#2a4f89]/60 bg-[#f3e7cd] px-3 py-1 text-xs uppercase tracking-[0.12em] text-[#315e99]">
+              <span className={["h-2 w-2 rounded-full", connected ? "bg-[#1f5aab] shadow-[0_0_8px_rgba(32,84,165,0.5)]" : "bg-[#b65353]"].join(" ")} />
+              {connected ? "Verbunden" : "Getrennt"}
+            </div>
           </div>
         </header>
 
@@ -628,7 +1333,6 @@ export function KniffelApp() {
 
         {!room && (
           <section className="mx-auto grid w-full max-w-3xl gap-4 rounded-[28px] border-2 border-[#2a4f89]/70 bg-[#f6ecd6]/90 p-5 shadow-[0_28px_60px_-46px_rgba(15,23,42,0.95)] backdrop-blur sm:p-8">
-
             <div className="sm:col-span-2">
               <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-[#315e99]" htmlFor="name-input">
                 Dein Name
@@ -636,7 +1340,7 @@ export function KniffelApp() {
               <input
                 id="name-input"
                 value={name}
-                onChange={(event) => setName(event.target.value)}
+                onChange={(e) => setName(e.target.value)}
                 maxLength={24}
                 placeholder="z. B. Mia"
                 className="w-full border-0 border-b-2 border-[#2a4f89]/55 bg-transparent px-1 py-2 text-lg text-[#123f84] outline-none transition placeholder:text-[#6481ad] focus:border-[#123f84]"
@@ -657,7 +1361,7 @@ export function KniffelApp() {
               <div className="flex gap-3 items-end">
                 <input
                   value={codeInput}
-                  onChange={(event) => setCodeInput(event.target.value.toUpperCase())}
+                  onChange={(e) => setCodeInput(e.target.value.toUpperCase())}
                   maxLength={6}
                   placeholder="Code"
                   className="w-full border-0 border-b-2 border-[#2a4f89]/55 bg-transparent px-1 py-2 text-lg uppercase tracking-[0.2em] text-[#123f84] outline-none transition placeholder:tracking-normal placeholder:text-[#6481ad] focus:border-[#123f84]"
@@ -668,6 +1372,14 @@ export function KniffelApp() {
                   className="rounded-md border border-[#2a4f89]/70 bg-[#dde7f7] px-4 py-3 font-semibold uppercase tracking-[0.08em] text-[#123f84] transition hover:bg-[#cfddf4]"
                 >
                   Join
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSpectate}
+                  className="rounded-md border border-[#2a4f89]/70 bg-[#f0e4c8] px-4 py-3 font-semibold text-[#123f84] transition hover:bg-[#e4d5b6]"
+                  title="Als Zuschauer beitreten"
+                >
+                  👁
                 </button>
               </div>
             </div>
@@ -683,27 +1395,15 @@ export function KniffelApp() {
                   <span className="rounded-md border border-[#2a4f89]/60 bg-[#e6d8bb] px-3 py-1 font-mono text-lg tracking-[0.2em] text-[#123f84]">
                     {room.code}
                   </span>
-                  <button
-                    type="button"
-                    onClick={copyCode}
-                    className="rounded-md border border-[#2a4f89]/55 bg-[#f0e4c8] px-3 py-1 text-sm text-[#214c8f] transition hover:bg-[#e4d5b6]"
-                  >
+                  <button type="button" onClick={copyCode} className="rounded-md border border-[#2a4f89]/55 bg-[#f0e4c8] px-3 py-1 text-sm text-[#214c8f] transition hover:bg-[#e4d5b6]">
                     🔗 Link kopieren
                   </button>
-                  <button
-                    type="button"
-                    onClick={shareRoom}
-                    className="rounded-md border border-[#2a4f89]/55 bg-[#dde7f7] px-3 py-1 text-sm text-[#214c8f] transition hover:bg-[#cfddf4]"
-                  >
+                  <button type="button" onClick={shareRoom} className="rounded-md border border-[#2a4f89]/55 bg-[#dde7f7] px-3 py-1 text-sm text-[#214c8f] transition hover:bg-[#cfddf4]">
                     📤 Teilen
                   </button>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={handleLeaveRoom}
-                className="rounded-md border border-[#2a4f89]/65 bg-[#e8d8b7] px-3 py-2 text-sm text-[#123f84] transition hover:bg-[#ddcba8]"
-              >
+              <button type="button" onClick={handleLeaveRoom} className="rounded-md border border-[#2a4f89]/65 bg-[#e8d8b7] px-3 py-2 text-sm text-[#123f84] transition hover:bg-[#ddcba8]">
                 Raum verlassen
               </button>
             </div>
@@ -717,32 +1417,42 @@ export function KniffelApp() {
                   </p>
                   <ul className="mt-4 grid gap-2">
                     {room.players.map((player) => (
-                      <li
-                        key={player.id}
-                        className="flex items-center justify-between rounded-md border border-[#2a4f89]/45 bg-[#efe1c2] px-3 py-2"
-                      >
+                      <li key={player.id} className="flex items-center justify-between rounded-md border border-[#2a4f89]/45 bg-[#efe1c2] px-3 py-2">
                         <div className="flex items-center gap-2">
                           {player.icon && <span className="text-lg">{player.icon}</span>}
-                          <span className="flex items-center gap-2 font-medium text-[#123f84]"><span className="inline-block h-3 w-3 rounded-full" style={{ backgroundColor: player.color || "#999" }} />{player.name}</span>
+                          <span className="flex items-center gap-2 font-medium text-[#123f84]">
+                            <span className="inline-block h-3 w-3 rounded-full" style={{ backgroundColor: player.color || "#999" }} />
+                            {player.name}
+                          </span>
                           {player.id === room.hostId && (
-                            <span className="rounded-full border border-[#2a4f89]/45 bg-[#d7e5fb] px-2 py-0.5 text-xs text-[#123f84]">
-                              Host
-                            </span>
+                            <span className="rounded-full border border-[#2a4f89]/45 bg-[#d7e5fb] px-2 py-0.5 text-xs text-[#123f84]">Host</span>
                           )}
                           {player.id === clientId && (
-                            <span className="rounded-full border border-[#2a4f89]/45 bg-[#e7dbc0] px-2 py-0.5 text-xs text-[#123f84]">
-                              Du
-                            </span>
+                            <span className="rounded-full border border-[#2a4f89]/45 bg-[#e7dbc0] px-2 py-0.5 text-xs text-[#123f84]">Du</span>
                           )}
                         </div>
-                        <span
-                          className={["text-xs", player.connected ? "text-[#1f5aab]" : "text-[#6f86ad]"].join(" ")}
-                        >
+                        <span className={["text-xs", player.connected ? "text-[#1f5aab]" : "text-[#6f86ad]"].join(" ")}>
                           {player.connected ? "online" : "offline"}
                         </span>
                       </li>
                     ))}
                   </ul>
+
+                  {/* Timer toggle for host */}
+                  {isHost && (
+                    <div className="mt-4 flex items-center gap-3 rounded-md border border-[#2a4f89]/35 bg-[#f0e4c8] px-3 py-2">
+                      <label className="flex cursor-pointer items-center gap-2 text-sm text-[#123f84]">
+                        <input
+                          type="checkbox"
+                          checked={room.timerEnabled}
+                          onChange={(e) => handleTimerToggle(e.target.checked)}
+                          className="h-4 w-4 cursor-pointer"
+                          style={{ accentColor: "#1f4d90" }}
+                        />
+                        Zeitlimit pro Zug ({room.timerSeconds}s)
+                      </label>
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex items-end">
@@ -772,25 +1482,21 @@ export function KniffelApp() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.35 }}
                     className="flex items-center gap-3 rounded-xl border-l-4 px-4 py-3"
-                    style={{
-                      borderLeftColor: currentPlayer.color,
-                      backgroundColor: `${currentPlayer.color}18`,
-                    }}
+                    style={{ borderLeftColor: currentPlayer.color, backgroundColor: `${currentPlayer.color}18` }}
                   >
-                    <div
-                      className="h-4 w-4 flex-shrink-0 rounded-full"
-                      style={{ backgroundColor: currentPlayer.color }}
-                    />
+                    <div className="h-4 w-4 flex-shrink-0 rounded-full" style={{ backgroundColor: currentPlayer.color }} />
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                       <span className="font-semibold text-[#123f84]">
                         {isMyTurn ? "Du bist dran" : `${currentPlayer.name} ist am Zug`}
                       </span>
                       {isMyTurn && (
-                        <span
-                          className="rounded-full px-2 py-0.5 text-xs font-bold text-white"
-                          style={{ backgroundColor: currentPlayer.color }}
-                        >
+                        <span className="rounded-full px-2 py-0.5 text-xs font-bold text-white" style={{ backgroundColor: currentPlayer.color }}>
                           Dein Zug!
+                        </span>
+                      )}
+                      {!currentPlayer.connected && (
+                        <span className="rounded-full bg-[#e74c3c]/20 px-2 py-0.5 text-xs text-[#e74c3c]">
+                          Getrennt — warte auf Rückkehr...
                         </span>
                       )}
                     </div>
@@ -800,11 +1506,7 @@ export function KniffelApp() {
                 <div className="grid gap-4 lg:grid-cols-[1fr_auto]">
                   <div
                     className="rounded-[20px] border-2 border-[#2a4f89]/65 bg-[#f4e8cf]/90 p-4"
-                    style={
-                      currentPlayer && room.status === "playing"
-                        ? { borderColor: `${currentPlayer.color}70` }
-                        : undefined
-                    }
+                    style={currentPlayer && room.status === "playing" ? { borderColor: `${currentPlayer.color}70` } : undefined}
                   >
                     <p className="text-sm text-[#315e99]">
                       Runde {Math.max(room.currentRound, 1)} / {room.maxRounds}
@@ -822,17 +1524,23 @@ export function KniffelApp() {
                     <p className="text-xs uppercase tracking-[0.14em] text-[#315e99]">Spieler</p>
                     <p className="mt-1 text-sm text-[#214c8f]">
                       {room.players.length} Teilnehmer · {room.maxRounds} Runden
+                      {room.timerEnabled && ` · ${room.timerSeconds}s Timer`}
                     </p>
                   </div>
                 </div>
 
                 <div className="rounded-[22px] border-2 border-[#2a4f89]/65 bg-[#f4e8cf]/90 p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
-                    <h3 className="text-sm uppercase tracking-[0.16em] text-[#315e99]">Wuerfel</h3>
+                    <h3 className="text-sm uppercase tracking-[0.16em] text-[#315e99]">Würfel</h3>
                     <div className="text-sm text-[#214c8f]">
-                      Wuerfe: {room.turn.rollsUsed} / 3 · Verbleibend: {room.turn.rollsLeft}
+                      Würfe: {room.turn.rollsUsed} / 3 · Verbleibend: {room.turn.rollsLeft}
                     </div>
                   </div>
+
+                  {/* Timer bar */}
+                  {room.timerEnabled && room.turnStartedAt && room.status === "playing" && (
+                    <TimerBar turnStartedAt={room.turnStartedAt} timerSeconds={room.timerSeconds} />
+                  )}
 
                   <DiceBox
                     dice={room.turn.dice}
@@ -843,32 +1551,61 @@ export function KniffelApp() {
                     activeColor={activeColor}
                   />
 
-                  <button
-                    type="button"
-                    onClick={handleRoll}
-                    disabled={!canRoll || room.status !== "playing"}
-                    className={[
-                      "mt-4 w-full rounded-md border px-4 py-3 font-bold uppercase tracking-[0.08em] transition",
-                      canRoll && room.status === "playing"
-                        ? "cursor-pointer hover:brightness-95 active:scale-[0.98]"
-                        : "cursor-not-allowed border-[#7f92b3]/45 bg-[#e6dcc5]/70 text-[#7f92b3]",
-                    ].join(" ")}
-                    style={
-                      canRoll && room.status === "playing"
-                        ? {
-                            borderColor: activeColor || "#1f4d90",
-                            backgroundColor: activeColor || "#1f4d90",
-                            color: "#ffffff",
-                          }
-                        : undefined
-                    }
-                  >
-                    Wuerfeln
-                  </button>
+                  {!isSpectator && (
+                    <button
+                      type="button"
+                      onClick={handleRoll}
+                      disabled={!canRoll || room.status !== "playing"}
+                      className={[
+                        "mt-4 w-full rounded-md border px-4 py-3 font-bold uppercase tracking-[0.08em] transition",
+                        canRoll && room.status === "playing"
+                          ? "cursor-pointer hover:brightness-95 active:scale-[0.98]"
+                          : "cursor-not-allowed border-[#7f92b3]/45 bg-[#e6dcc5]/70 text-[#7f92b3]",
+                      ].join(" ")}
+                      style={
+                        canRoll && room.status === "playing"
+                          ? { borderColor: activeColor || "#1f4d90", backgroundColor: activeColor || "#1f4d90", color: "#ffffff" }
+                          : undefined
+                      }
+                    >
+                      Würfeln
+                    </button>
+                  )}
                 </div>
 
+                {/* Score confirmation bar */}
+                {pendingScore && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="flex items-center justify-center gap-3 rounded-xl border-2 border-[#1f4d90]/60 bg-[#dde7f7] px-4 py-3"
+                  >
+                    <span className="text-sm font-medium text-[#123f84]">
+                      {ALL_SCORE_ROWS.find((r) => r.category === pendingScore)?.label}: {scorePreview[pendingScore]} Punkte
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleScoreConfirm}
+                      className="rounded-md bg-[#2ecc71] px-4 py-2 text-sm font-bold text-white transition hover:bg-[#27ae60]"
+                    >
+                      Bestätigen ✓
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleScoreCancel}
+                      className="rounded-md bg-[#e74c3c] px-4 py-2 text-sm font-bold text-white transition hover:bg-[#c0392b]"
+                    >
+                      Abbrechen ✗
+                    </button>
+                  </motion.div>
+                )}
+
+                {/* Mobile scorecard */}
+                {renderMobileScorecard()}
+
+                {/* Desktop scorecard */}
                 <div
-                  className="rounded-[30px] border border-[#204b88]/70 bg-[#efe2c5] p-3 shadow-[0_26px_60px_-45px_rgba(15,23,42,0.95)] sm:p-4"
+                  className="hidden rounded-[30px] border border-[#204b88]/70 bg-[#efe2c5] p-3 shadow-[0_26px_60px_-45px_rgba(15,23,42,0.95)] sm:p-4 md:block"
                   style={{
                     fontFamily: "var(--font-kniffel-serif), serif",
                     backgroundImage:
@@ -881,7 +1618,7 @@ export function KniffelApp() {
                       <p className="mt-1 text-sm font-semibold text-[#123f84]">Punkteblatt</p>
                     </div>
 
-                    <div className="overflow-x-auto" style={{ overscrollBehaviorX: 'contain' }}>
+                    <div className="overflow-x-auto" style={{ overscrollBehaviorX: "contain" }}>
                       <table className="min-w-[820px] w-full border-collapse text-sm text-[#1d4a89]">
                         <thead>
                           <tr>
@@ -894,22 +1631,17 @@ export function KniffelApp() {
                                 className="border border-[#2a4f89]/70 px-3 py-2 text-center text-xs font-semibold uppercase tracking-[0.09em] text-[#113a78]"
                                 style={
                                   room.currentPlayerId === player.id
-                                    ? {
-                                        backgroundColor: `${player.color}35`,
-                                        borderBottom: `3px solid ${player.color}`,
-                                      }
+                                    ? { backgroundColor: `${player.color}35`, borderBottom: `3px solid ${player.color}` }
                                     : { backgroundColor: "#e6d8ba" }
                                 }
                               >
                                 <span className="flex items-center justify-center gap-1">
                                   {room.currentPlayerId === player.id && (
-                                    <span
-                                      className="inline-block h-2 w-2 rounded-full flex-shrink-0"
-                                      style={{ backgroundColor: player.color }}
-                                    />
+                                    <span className="inline-block h-2 w-2 rounded-full flex-shrink-0" style={{ backgroundColor: player.color }} />
                                   )}
                                   {player.icon && <span className="text-sm">{player.icon}</span>}
                                   {player.name}
+                                  {!player.connected && <span className="text-[10px] text-[#e74c3c]">⚡</span>}
                                 </span>
                               </th>
                             ))}
@@ -918,10 +1650,7 @@ export function KniffelApp() {
 
                         <tbody>
                           <tr>
-                            <td
-                              colSpan={room.players.length + 1}
-                              className="border border-[#2a4f89]/70 bg-[#e0d0af] px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.1em]"
-                            >
+                            <td colSpan={room.players.length + 1} className="border border-[#2a4f89]/70 bg-[#e0d0af] px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.1em]">
                               Oberer Teil
                             </td>
                           </tr>
@@ -946,13 +1675,7 @@ export function KniffelApp() {
                               Gesamt oberer Teil &rarr;
                             </td>
                             {room.players.map((player) => (
-                              <td
-                                key={`${player.id}-upper-total`}
-                                className={[
-                                  "border border-[#2a4f89]/65 px-3 py-2 text-center font-semibold text-[#123f84]",
-                                  room.currentPlayerId === player.id ? "bg-[#dceafb]" : "bg-[#f3e6ce]",
-                                ].join(" ")}
-                              >
+                              <td key={`${player.id}-upper-total`} className={["border border-[#2a4f89]/65 px-3 py-2 text-center font-semibold text-[#123f84]", room.currentPlayerId === player.id ? "bg-[#dceafb]" : "bg-[#f3e6ce]"].join(" ")}>
                                 {player.upperTotal}
                               </td>
                             ))}
@@ -963,13 +1686,7 @@ export function KniffelApp() {
                               Bonus bei 63 oder mehr = 35 &rarr;
                             </td>
                             {room.players.map((player) => (
-                              <td
-                                key={`${player.id}-bonus`}
-                                className={[
-                                  "border border-[#2a4f89]/65 px-3 py-2 text-center font-semibold text-[#123f84]",
-                                  room.currentPlayerId === player.id ? "bg-[#dceafb]" : "bg-[#f3e6ce]",
-                                ].join(" ")}
-                              >
+                              <td key={`${player.id}-bonus`} className={["border border-[#2a4f89]/65 px-3 py-2 text-center font-semibold text-[#123f84]", room.currentPlayerId === player.id ? "bg-[#dceafb]" : "bg-[#f3e6ce]"].join(" ")}>
                                 {player.bonus}
                               </td>
                             ))}
@@ -980,23 +1697,14 @@ export function KniffelApp() {
                               Gesamt oberer Teil
                             </td>
                             {room.players.map((player) => (
-                              <td
-                                key={`${player.id}-upper-with-bonus`}
-                                className={[
-                                  "border border-[#2a4f89]/65 px-3 py-2 text-center font-bold text-[#123f84]",
-                                  room.currentPlayerId === player.id ? "bg-[#dceafb]" : "bg-[#efdfc2]",
-                                ].join(" ")}
-                              >
+                              <td key={`${player.id}-upper-with-bonus`} className={["border border-[#2a4f89]/65 px-3 py-2 text-center font-bold text-[#123f84]", room.currentPlayerId === player.id ? "bg-[#dceafb]" : "bg-[#efdfc2]"].join(" ")}>
                                 {player.upperTotal + player.bonus}
                               </td>
                             ))}
                           </tr>
 
                           <tr>
-                            <td
-                              colSpan={room.players.length + 1}
-                              className="border border-[#2a4f89]/70 bg-[#dccba8] px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.1em]"
-                            >
+                            <td colSpan={room.players.length + 1} className="border border-[#2a4f89]/70 bg-[#dccba8] px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.1em]">
                               Unterer Teil
                             </td>
                           </tr>
@@ -1018,13 +1726,7 @@ export function KniffelApp() {
                               Gesamt unterer Teil
                             </td>
                             {room.players.map((player) => (
-                              <td
-                                key={`${player.id}-lower-total`}
-                                className={[
-                                  "border border-[#2a4f89]/65 px-3 py-2 text-center font-bold text-[#123f84]",
-                                  room.currentPlayerId === player.id ? "bg-[#dceafb]" : "bg-[#efdfc2]",
-                                ].join(" ")}
-                              >
+                              <td key={`${player.id}-lower-total`} className={["border border-[#2a4f89]/65 px-3 py-2 text-center font-bold text-[#123f84]", room.currentPlayerId === player.id ? "bg-[#dceafb]" : "bg-[#efdfc2]"].join(" ")}>
                                 {player.lowerTotal}
                               </td>
                             ))}
@@ -1032,16 +1734,10 @@ export function KniffelApp() {
 
                           <tr>
                             <td className="sticky left-0 z-20 border border-[#2a4f89]/65 bg-[#e3d4b4] px-3 py-2 font-semibold text-[#123f84]">
-                              Gesamt oberer Teil (Uebertrag)
+                              Gesamt oberer Teil (Übertrag)
                             </td>
                             {room.players.map((player) => (
-                              <td
-                                key={`${player.id}-carried-upper`}
-                                className={[
-                                  "border border-[#2a4f89]/65 px-3 py-2 text-center font-bold text-[#123f84]",
-                                  room.currentPlayerId === player.id ? "bg-[#dceafb]" : "bg-[#efdfc2]",
-                                ].join(" ")}
-                              >
+                              <td key={`${player.id}-carried-upper`} className={["border border-[#2a4f89]/65 px-3 py-2 text-center font-bold text-[#123f84]", room.currentPlayerId === player.id ? "bg-[#dceafb]" : "bg-[#efdfc2]"].join(" ")}>
                                 {player.upperTotal + player.bonus}
                               </td>
                             ))}
@@ -1052,14 +1748,8 @@ export function KniffelApp() {
                               Endsumme
                             </td>
                             {room.players.map((player) => (
-                              <td
-                                key={`${player.id}-total`}
-                                className={[
-                                  "border-2 border-[#2a4f89]/80 px-3 py-2 text-center text-base font-extrabold text-[#0f366f]",
-                                  room.currentPlayerId === player.id ? "bg-[#cdddf4]" : "bg-[#e7d5b2]",
-                                ].join(" ")}
-                              >
-                                <BlurredScore value={player.total} />
+                              <td key={`${player.id}-total`} className={["border-2 border-[#2a4f89]/80 px-3 py-2 text-center text-base font-extrabold text-[#0f366f]", room.currentPlayerId === player.id ? "bg-[#cdddf4]" : "bg-[#e7d5b2]"].join(" ")}>
+                                {isSpectator ? player.total : <BlurredScore value={player.total} />}
                               </td>
                             ))}
                           </tr>
@@ -1074,6 +1764,28 @@ export function KniffelApp() {
         )}
       </div>
 
+      {/* Chat */}
+      {room && (
+        <ChatPanel
+          messages={chatMessages}
+          onSend={handleSendChat}
+          unreadCount={chatUnread}
+        />
+      )}
+
+      {/* Achievement toasts */}
+      <div className="fixed right-4 top-4 z-[70] flex flex-col gap-2">
+        <AnimatePresence>
+          {achievementToasts.map((a, i) => (
+            <AchievementToast
+              key={`${a.type}-${a.playerId}-${i}`}
+              achievement={a}
+              onDone={() => setAchievementToasts((prev) => prev.filter((_, j) => j !== i))}
+            />
+          ))}
+        </AnimatePresence>
+      </div>
+
       <AnimatePresence>
         {celebration && (
           <CelebrationOverlay kind={celebration} onDone={() => setCelebration(null)} />
@@ -1082,53 +1794,14 @@ export function KniffelApp() {
 
       <AnimatePresence>
         {room?.status === "finished" && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-[#e2d2af]/85 p-4 backdrop-blur-[2px]"
-          >
-            <motion.div
-              initial={{ y: 30, scale: 0.96, opacity: 0 }}
-              animate={{ y: 0, scale: 1, opacity: 1 }}
-              exit={{ y: 20, opacity: 0 }}
-              className="w-full max-w-xl rounded-[26px] border-2 border-[#2a4f89]/70 bg-[#f5ebd5] p-6 text-[#123f84] shadow-[0_24px_54px_-38px_rgba(15,23,42,0.9)]"
-            >
-              <h2 className="text-2xl font-semibold text-[#123f84]">Spiel vorbei</h2>
-              <p className="mt-2 text-[#214c8f]">
-                Gewinner: <span className="font-semibold text-[#1f5aab]">{winnerText || "Unbekannt"}</span>
-              </p>
-              {me && <p className="mt-1 text-sm text-[#315e99]">Dein Endstand: {me.total} Punkte</p>}
-
-              <div className="mt-4 space-y-2">
-                {room.players
-                  .slice()
-                  .sort((a, b) => b.total - a.total)
-                  .map((player) => (
-                    <div
-                      key={player.id}
-                      className="flex items-center justify-between rounded-md border border-[#2a4f89]/50 bg-[#ebddbe] px-3 py-2"
-                    >
-                      <span className="flex items-center gap-2 text-[#123f84]">
-                        {player.icon && <span>{player.icon}</span>}
-                        {player.name}
-                      </span>
-                      <span className="font-semibold text-[#1f5aab]">{player.total}</span>
-                    </div>
-                  ))}
-              </div>
-
-              <div className="mt-6 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={handleLeaveRoom}
-                  className="rounded-md border border-[#2a4f89]/65 bg-[#dbe7f8] px-4 py-2 text-sm font-medium text-[#123f84] transition hover:bg-[#ccd9f0]"
-                >
-                  Zur Startseite
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
+          <AnimatedScoreboard
+            room={room}
+            clientId={clientId}
+            achievements={achievements}
+            onLeave={handleLeaveRoom}
+            onRematch={handleRematch}
+            isHost={isHost}
+          />
         )}
       </AnimatePresence>
     </main>

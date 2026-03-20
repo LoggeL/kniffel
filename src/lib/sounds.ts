@@ -27,7 +27,6 @@ export function playDiceRoll(): void {
     const ctx = getCtx();
     const now = ctx.currentTime;
 
-    // Multiple short bursts of filtered noise to simulate dice clattering
     for (let i = 0; i < 6; i++) {
       const t = now + i * 0.06 + Math.random() * 0.03;
       const n = noise(ctx, 0.08);
@@ -43,7 +42,6 @@ export function playDiceRoll(): void {
       n.stop(t + 0.08);
     }
 
-    // Underlying rumble
     const rumble = noise(ctx, 0.5);
     const lp = ctx.createBiquadFilter();
     lp.type = "lowpass";
@@ -64,7 +62,6 @@ export function playDiceLand(): void {
     const ctx = getCtx();
     const now = ctx.currentTime;
 
-    // Thump - low frequency impact
     const osc = ctx.createOscillator();
     osc.type = "sine";
     osc.frequency.setValueAtTime(120, now);
@@ -76,7 +73,6 @@ export function playDiceLand(): void {
     osc.start(now);
     osc.stop(now + 0.2);
 
-    // Short noise burst for the surface contact
     const n = noise(ctx, 0.06);
     const hp = ctx.createBiquadFilter();
     hp.type = "highpass";
@@ -97,7 +93,6 @@ export function playScoreEntry(): void {
     const ctx = getCtx();
     const now = ctx.currentTime;
 
-    // Pen scratch / stamp sound
     for (let i = 0; i < 3; i++) {
       const t = now + i * 0.04;
       const n = noise(ctx, 0.05);
@@ -113,7 +108,6 @@ export function playScoreEntry(): void {
       n.stop(t + 0.05);
     }
 
-    // Stamp thud
     const osc = ctx.createOscillator();
     osc.type = "sine";
     osc.frequency.setValueAtTime(200, now + 0.02);
@@ -134,7 +128,6 @@ export function playKniffelFanfare(): void {
     const ctx = getCtx();
     const now = ctx.currentTime;
 
-    // Triumphant chord progression: C-E-G-C
     const notes = [523.25, 659.25, 783.99, 1046.5];
     notes.forEach((freq, i) => {
       const t = now + i * 0.12;
@@ -151,7 +144,6 @@ export function playKniffelFanfare(): void {
       osc.stop(t + 0.85);
     });
 
-    // Final shimmer
     const shimmer = noise(ctx, 0.6);
     const hp = ctx.createBiquadFilter();
     hp.type = "highpass";
@@ -174,7 +166,6 @@ export function playCelebration(): void {
     const ctx = getCtx();
     const now = ctx.currentTime;
 
-    // Quick ascending arpeggio
     const notes = [440, 554.37, 659.25];
     notes.forEach((freq, i) => {
       const t = now + i * 0.08;
@@ -188,6 +179,79 @@ export function playCelebration(): void {
       osc.start(t);
       osc.stop(t + 0.35);
     });
+  } catch {
+    // Audio not available
+  }
+}
+
+// Placement reveal sounds for animated scoreboard
+export function playPlacementReveal(place: number): void {
+  try {
+    const ctx = getCtx();
+    const now = ctx.currentTime;
+
+    if (place === 1) {
+      // Winner: triumphant ascending chord
+      const notes = [392, 493.88, 587.33, 783.99];
+      notes.forEach((freq, i) => {
+        const t = now + i * 0.1;
+        const osc = ctx.createOscillator();
+        osc.type = "triangle";
+        osc.frequency.value = freq;
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0, t);
+        gain.gain.linearRampToValueAtTime(0.18, t + 0.05);
+        gain.gain.setValueAtTime(0.18, t + 0.4);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.9);
+        osc.connect(gain).connect(ctx.destination);
+        osc.start(t);
+        osc.stop(t + 0.95);
+      });
+    } else if (place === 2) {
+      // Second: two-note rise
+      [349.23, 440].forEach((freq, i) => {
+        const t = now + i * 0.12;
+        const osc = ctx.createOscillator();
+        osc.type = "triangle";
+        osc.frequency.value = freq;
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0.12, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+        osc.connect(gain).connect(ctx.destination);
+        osc.start(t);
+        osc.stop(t + 0.45);
+      });
+    } else {
+      // Other: simple tone
+      const osc = ctx.createOscillator();
+      osc.type = "triangle";
+      osc.frequency.value = 293.66;
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.1, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.35);
+    }
+  } catch {
+    // Audio not available
+  }
+}
+
+export function playChatPop(): void {
+  try {
+    const ctx = getCtx();
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(800, now);
+    osc.frequency.exponentialRampToValueAtTime(1200, now + 0.05);
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.06, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.1);
   } catch {
     // Audio not available
   }
