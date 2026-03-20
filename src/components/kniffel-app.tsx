@@ -1050,14 +1050,15 @@ export function KniffelApp() {
             onClick={() => handleScoreDirect(row.category)}
             className="relative min-h-[36px] min-w-[36px] rounded-lg px-2.5 py-1.5 font-bold shadow-md transition hover:brightness-110 active:scale-95"
             style={{
-              backgroundColor: previewValue === 0 ? "#b0a89a" : previewValue >= 25 ? "#16a34a" : (me?.color || "#1f4d90"),
-              color: previewValue === 0 ? "rgba(255,255,255,0.5)" : "#fff",
-              fontSize: previewValue === 0 ? "11px" : "14px",
-              boxShadow: previewValue >= 25 ? "0 0 12px rgba(22,163,74,0.5), 0 0 4px rgba(255,215,0,0.4)" : undefined,
+              backgroundColor: previewValue === 0 ? "transparent" : (me?.color || "#1f4d90"),
+              color: previewValue === 0 ? (me?.color || "#1f4d90") : "#fff",
+              border: previewValue === 0 ? `2px solid ${me?.color || "#1f4d90"}` : "2px solid transparent",
+              opacity: previewValue === 0 ? 0.45 : 1,
+              boxShadow: previewValue >= 25 ? `0 0 12px ${me?.color || "#1f4d90"}80` : undefined,
               animation: previewValue >= 25 ? "pulse 1.5s ease-in-out infinite" : undefined,
             }}
           >
-            {previewValue === 0 ? "—" : previewValue}
+            {previewValue}
           </button>
         )}
         {typeof score !== "number" && !allowScore && (
@@ -1143,14 +1144,15 @@ export function KniffelApp() {
                       onClick={() => handleScoreDirect(row.category)}
                       className="rounded-lg px-3 py-1.5 font-bold shadow-md active:scale-95"
                       style={{
-                        backgroundColor: previewValue === 0 ? "#b0a89a" : previewValue >= 25 ? "#16a34a" : (me?.color || "#1f4d90"),
-                        color: previewValue === 0 ? "rgba(255,255,255,0.5)" : "#fff",
-                        fontSize: previewValue === 0 ? "11px" : "14px",
-                        boxShadow: previewValue >= 25 ? "0 0 12px rgba(22,163,74,0.5), 0 0 4px rgba(255,215,0,0.4)" : undefined,
+                        backgroundColor: previewValue === 0 ? "transparent" : (me?.color || "#1f4d90"),
+                        color: previewValue === 0 ? (me?.color || "#1f4d90") : "#fff",
+                        border: previewValue === 0 ? `2px solid ${me?.color || "#1f4d90"}` : "2px solid transparent",
+                        opacity: previewValue === 0 ? 0.45 : 1,
+                        boxShadow: previewValue >= 25 ? `0 0 12px ${me?.color || "#1f4d90"}80` : undefined,
                         animation: previewValue >= 25 ? "pulse 1.5s ease-in-out infinite" : undefined,
                       }}
                     >
-                      {previewValue === 0 ? "—" : previewValue}
+                      {previewValue}
                     </button>
                   )}
                   {typeof score !== "number" && !allowScore && (
@@ -1203,14 +1205,15 @@ export function KniffelApp() {
                       onClick={() => handleScoreDirect(row.category)}
                       className="rounded-lg px-3 py-1.5 font-bold shadow-md active:scale-95"
                       style={{
-                        backgroundColor: previewValue === 0 ? "#b0a89a" : previewValue >= 25 ? "#16a34a" : (me?.color || "#1f4d90"),
-                        color: previewValue === 0 ? "rgba(255,255,255,0.5)" : "#fff",
-                        fontSize: previewValue === 0 ? "11px" : "14px",
-                        boxShadow: previewValue >= 25 ? "0 0 12px rgba(22,163,74,0.5), 0 0 4px rgba(255,215,0,0.4)" : undefined,
+                        backgroundColor: previewValue === 0 ? "transparent" : (me?.color || "#1f4d90"),
+                        color: previewValue === 0 ? (me?.color || "#1f4d90") : "#fff",
+                        border: previewValue === 0 ? `2px solid ${me?.color || "#1f4d90"}` : "2px solid transparent",
+                        opacity: previewValue === 0 ? 0.45 : 1,
+                        boxShadow: previewValue >= 25 ? `0 0 12px ${me?.color || "#1f4d90"}80` : undefined,
                         animation: previewValue >= 25 ? "pulse 1.5s ease-in-out infinite" : undefined,
                       }}
                     >
-                      {previewValue === 0 ? "—" : previewValue}
+                      {previewValue}
                     </button>
                   )}
                   {typeof score !== "number" && !allowScore && (
