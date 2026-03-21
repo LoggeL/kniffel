@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   CATEGORIES,
@@ -13,7 +13,6 @@ import { getSocket } from "@/lib/socket";
 import type {
   AckResponse,
   Achievement,
-  AchievementType,
   ChatMessage,
   PlayerState,
   RoomState,
@@ -360,9 +359,10 @@ interface FloatingReaction {
   playerName: string;
   playerColor: string;
   playerIcon: string | null;
+  spawnX: number;
 }
 
-const REACTION_EMOJIS = ["👏", "😂", "🤬", "🎉", "🔥", "💀", "😤", "🥳"];
+const REACTION_EMOJIS = ["👏", "😂", "🤬", "🎉", "🔥", "💀", "😤", "🥳", "❓"];
 
 function ReactionBar({
   onReact,
@@ -379,7 +379,7 @@ function ReactionBar({
           {reactions.map((r) => (
             <motion.div
               key={r.id}
-              initial={{ opacity: 1, y: 0, x: `${30 + (r.id.charCodeAt(0) % 40)}vw` }}
+              initial={{ opacity: 1, y: 0, x: `${r.spawnX}vw` }}
               animate={{ opacity: 0, y: -200 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 2, ease: "easeOut" }}
@@ -434,6 +434,21 @@ function AnimatedScoreboard({
     () => room.players.slice().sort((a, b) => b.total - a.total),
     [room.players]
   );
+
+  // Compute rank with tie-sharing (same score = same rank)
+  const rankMap = useMemo(() => {
+    const map = new Map<string, number>();
+    let rank = 1;
+    for (let i = 0; i < sorted.length; i++) {
+      if (i > 0 && sorted[i].total === sorted[i - 1].total) {
+        map.set(sorted[i].id, map.get(sorted[i - 1].id)!);
+      } else {
+        map.set(sorted[i].id, rank);
+      }
+      rank++;
+    }
+    return map;
+  }, [sorted]);
   const [revealedCount, setRevealedCount] = useState(0);
   const [showConfetti, setShowConfetti] = useState(false);
   const revealStarted = useRef(false);
@@ -480,7 +495,7 @@ function AnimatedScoreboard({
 
         <div className="mt-4 space-y-2">
           {revealed.map((player, idx) => {
-            const place = sorted.indexOf(player) + 1;
+            const place = rankMap.get(player.id) ?? sorted.indexOf(player) + 1;
             const isWinner = room.winnerIds.includes(player.id);
             const playerAchievements = achievements.filter((a) => a.playerId === player.id);
 
@@ -599,7 +614,6 @@ export function KniffelApp() {
   // Achievement state
   const [achievements, setAchievements] = useState<Achievement[]>([]);
   const [achievementToasts, setAchievementToasts] = useState<Achievement[]>([]);
-  const earnedRef = useRef<Set<string>>(new Set());
 
   // Mobile scorecard: selected player tab
   const [mobileScorePlayer, setMobileScorePlayer] = useState<string | null>(null);
@@ -681,8 +695,10 @@ export function KniffelApp() {
     const onRoomUpdate = (incoming: RoomState) => {
       setRoom(incoming);
       localStorage.setItem(ROOM_CODE_KEY, incoming.code);
-      // Sync chat from room state (for reconnects)
-      // Reactions are ephemeral, no sync needed
+      // Sync achievements from server
+      if (incoming.achievements) {
+        setAchievements(incoming.achievements);
+      }
       const url = new URL(window.location.href);
       url.searchParams.set("room", incoming.code);
       window.history.replaceState({}, "", url.toString());
@@ -695,6 +711,7 @@ export function KniffelApp() {
         playerName: msg.playerName,
         playerColor: msg.playerColor,
         playerIcon: msg.playerIcon || null,
+        spawnX: 5 + Math.random() * 80,
       };
       setFloatingReactions((prev) => [...prev, reaction]);
       setTimeout(() => {
@@ -708,6 +725,11 @@ export function KniffelApp() {
     socket.on("room:update", onRoomUpdate);
     socket.on("action:error", onActionError);
     socket.on("chat:message", onChatMessage);
+    const onAchievement = (a: Achievement) => {
+      setAchievements((prev) => [...prev, a]);
+      setAchievementToasts((prev) => [...prev, a]);
+    };
+    socket.on("achievement:earned", onAchievement);
     socket.connect();
 
     return () => {
@@ -716,6 +738,7 @@ export function KniffelApp() {
       socket.off("room:update", onRoomUpdate);
       socket.off("action:error", onActionError);
       socket.off("chat:message", onChatMessage);
+      socket.off("achievement:earned", onAchievement);
     };
   }, [socket, searchParams]);
 
@@ -756,75 +779,6 @@ export function KniffelApp() {
   }, [room, me, isMyTurn]);
 
   // --- Achievement detection ---
-  const detectAchievements = useCallback(
-    (category: Category, dice: number[], player: PlayerState) => {
-      const newAchievements: Achievement[] = [];
-      const key = (type: AchievementType) => `${player.id}-${type}`;
-
-      // Kniffel
-      if (category === "yahtzee") {
-        const counts = new Map<number, number>();
-        for (const d of dice) counts.set(d, (counts.get(d) || 0) + 1);
-        if ([...counts.values()].some((c) => c >= 5) && !earnedRef.current.has(key("kniffel"))) {
-          earnedRef.current.add(key("kniffel"));
-          newAchievements.push({ ...ACHIEVEMENT_DEFS.kniffel, type: "kniffel", playerId: player.id });
-        }
-      }
-
-      // Full House Party
-      if (category === "fullHouse") {
-        const score = calculateCategoryScore("fullHouse", dice);
-        if (score > 0 && !earnedRef.current.has(key("fullHouseParty"))) {
-          earnedRef.current.add(key("fullHouseParty"));
-          newAchievements.push({ ...ACHIEVEMENT_DEFS.fullHouseParty, type: "fullHouseParty", playerId: player.id });
-        }
-      }
-
-      // Null Punkte
-      const scoreVal = calculateCategoryScore(category, dice);
-      if (scoreVal === 0 && !earnedRef.current.has(key("nullPunkte"))) {
-        earnedRef.current.add(key("nullPunkte"));
-        newAchievements.push({ ...ACHIEVEMENT_DEFS.nullPunkte, type: "nullPunkte", playerId: player.id });
-      }
-
-      // Perfekter Wurf (scored on first roll)
-      if (room && room.turn.rollsUsed === 1 && !earnedRef.current.has(key("perfekterWurf"))) {
-        earnedRef.current.add(key("perfekterWurf"));
-        newAchievements.push({ ...ACHIEVEMENT_DEFS.perfekterWurf, type: "perfekterWurf", playerId: player.id });
-      }
-
-      // Bonus
-      if ((UPPER_CATEGORIES as readonly string[]).includes(category)) {
-        const currentUpper = player.upperTotal;
-        if (currentUpper < 63 && currentUpper + scoreVal >= 63 && !earnedRef.current.has(key("bonus"))) {
-          earnedRef.current.add(key("bonus"));
-          newAchievements.push({ ...ACHIEVEMENT_DEFS.bonus, type: "bonus", playerId: player.id });
-        }
-      }
-
-      // Straßenfeger (check after scoring)
-      if (category === "smallStraight" || category === "largeStraight") {
-        const hasSmall = typeof player.scores.smallStraight === "number" && player.scores.smallStraight > 0;
-        const hasLarge = typeof player.scores.largeStraight === "number" && player.scores.largeStraight > 0;
-        const justScoredSmall = category === "smallStraight" && calculateCategoryScore("smallStraight", dice) > 0;
-        const justScoredLarge = category === "largeStraight" && calculateCategoryScore("largeStraight", dice) > 0;
-
-        if (
-          ((hasSmall || justScoredSmall) && (hasLarge || justScoredLarge)) &&
-          !earnedRef.current.has(key("strassenfeger"))
-        ) {
-          earnedRef.current.add(key("strassenfeger"));
-          newAchievements.push({ ...ACHIEVEMENT_DEFS.strassenfeger, type: "strassenfeger", playerId: player.id });
-        }
-      }
-
-      if (newAchievements.length > 0) {
-        setAchievements((prev) => [...prev, ...newAchievements]);
-        setAchievementToasts((prev) => [...prev, ...newAchievements]);
-      }
-    },
-    [room]
-  );
 
   const requireName = (): string | null => {
     const trimmed = name.trim();
@@ -848,7 +802,6 @@ export function KniffelApp() {
     setRoom(null);
     setFloatingReactions([]);
     setAchievements([]);
-    earnedRef.current.clear();
     setIsSpectator(false);
     const url = new URL(window.location.href);
     url.searchParams.delete("room");
@@ -960,7 +913,6 @@ export function KniffelApp() {
     const celebKind = detectCelebration(category, room.turn.dice, me);
 
     if (me) {
-      detectAchievements(category, room.turn.dice, me);
     }
 
     socket.emit("game:score", { code: room.code, category }, (ack: AckResponse) => {
@@ -987,8 +939,7 @@ export function KniffelApp() {
       if (!ack?.ok) setError(ack?.error || "Rematch fehlgeschlagen.");
       else {
         setAchievements([]);
-        earnedRef.current.clear();
-      }
+          }
     });
   };
 
@@ -1057,7 +1008,7 @@ export function KniffelApp() {
           <span className={[
             "relative text-sm",
             score === 0
-              ? "font-normal text-[#9ba5b7] line-through decoration-1 opacity-50"
+              ? "font-bold text-[#c0392b] line-through decoration-2"
               : isLowerSection && score >= 25
                 ? "font-extrabold text-[#0d6e3f]"
                 : isLowerSection && score >= 15
@@ -1125,6 +1076,9 @@ export function KniffelApp() {
               {p.icon && <span className="mr-1">{p.icon}</span>}
               {p.name}
               {room.currentPlayerId === p.id && " 🎲"}
+              {achievements.filter(a => a.playerId === p.id).map((a, i) => (
+                <span key={i} className="ml-0.5" title={a.label}>{a.icon}</span>
+              ))}
             </button>
           ))}
         </div>
@@ -1157,7 +1111,7 @@ export function KniffelApp() {
                 </div>
                 <div className="flex items-center gap-1.5">
                   {typeof score === "number" && (
-                    <span className={["text-base", score === 0 ? "font-normal text-[#9ba5b7] line-through decoration-1 opacity-50" : score >= 25 ? "font-extrabold text-[#0d6e3f]" : "font-bold text-[#123f84]"].join(" ")}>
+                    <span className={["text-base", score === 0 ? "font-bold text-[#c0392b] line-through decoration-2" : score >= 25 ? "font-extrabold text-[#0d6e3f]" : "font-bold text-[#123f84]"].join(" ")}>
                       {score === 50 && row.category === "yahtzee" ? "🎯 50" : score}
                     </span>
                   )}
@@ -1218,7 +1172,7 @@ export function KniffelApp() {
                 </div>
                 <div className="flex items-center gap-1.5">
                   {typeof score === "number" && (
-                    <span className={["text-base font-bold", score === 0 ? "text-[#b52f2f] line-through" : "text-[#123f84]"].join(" ")}>
+                    <span className={["text-base font-bold", score === 0 ? "font-bold text-[#c0392b] line-through decoration-2" : "text-[#123f84]"].join(" ")}>
                       {score}
                     </span>
                   )}
@@ -1585,6 +1539,13 @@ export function KniffelApp() {
                                   {player.name}
                                   {!player.connected && <span className="text-[10px] text-[#e74c3c]">⚡</span>}
                                 </span>
+                                {achievements.filter(a => a.playerId === player.id).length > 0 && (
+                                  <span className="flex items-center justify-center gap-0.5 mt-0.5 text-xs">
+                                    {achievements.filter(a => a.playerId === player.id).map((a, i) => (
+                                      <span key={i} title={a.label}>{a.icon}</span>
+                                    ))}
+                                  </span>
+                                )}
                               </th>
                             ))}
                           </tr>

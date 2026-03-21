@@ -60,6 +60,7 @@ export interface RoomState {
   timerSeconds: number;
   turnStartedAt: number | null;
   chatMessages: ChatMessage[];
+  achievements: Achievement[];
 }
 
 export interface AckResponse {

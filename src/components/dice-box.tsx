@@ -197,19 +197,16 @@ export function DiceBox({ dice, held, disabled, rollSequence, onToggleHold, acti
           {dice.map((value, index) => (
             <div
               key={`die-control-${index}`}
-              className="flex min-h-[52px] flex-col items-center justify-center gap-1 rounded-md border border-[#2a4f89]/35 bg-[#f2e6cc]/70 px-1 py-2 text-[#17407b]"
+              onClick={() => { if (!disabled) onToggleHold(index); }}
+              className={[
+                "flex min-h-[52px] flex-col items-center justify-center gap-1 rounded-md border border-[#2a4f89]/35 bg-[#f2e6cc]/70 px-1 py-2 text-[#17407b] transition",
+                !disabled && "cursor-pointer hover:bg-[#e8d9b8] active:scale-95",
+                held[index] && "ring-2 ring-[#1f4d90]",
+              ].filter(Boolean).join(" ")}
             >
-              <label className="flex cursor-pointer items-center gap-1.5 text-[11px] uppercase tracking-[0.11em]">
-                <input
-                  type="checkbox"
-                  checked={Boolean(held[index])}
-                  onChange={() => onToggleHold(index)}
-                  disabled={disabled}
-                  className="h-5 w-5 cursor-pointer"
-                  style={{ accentColor: activeColor || "#1f4d90" }}
-                />
-                Halt
-              </label>
+              <span className="text-[11px] uppercase tracking-[0.11em] select-none font-medium">
+                {held[index] ? "✓ Halt" : "Halt"}
+              </span>
               <span className="text-xs text-[#2a4f89]/70">Augen</span>
               <span className="font-mono text-xl font-bold leading-none text-[#123f84]">
                 {clampDiceValue(value)}

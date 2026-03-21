@@ -1,6 +1,7 @@
 const { CATEGORIES, createEmptyScores } = require("./constants");
 const { calculateCategoryScore, getScoreSummary } = require("./scoring");
 const { saveRoom, loadActiveRooms, cleanupFinished, deleteRoom } = require("./db");
+const { detectNewAchievements } = require("./achievements");
 
 const rooms = new Map();
 const turnTimers = new Map();
@@ -118,6 +119,7 @@ function serializeRoom(room) {
       icon: s.icon || null,
     })),
     chatMessages: room.chatMessages || [],
+    achievements: room.achievements || [],
     turn: {
       dice: room.turn.dice,
       held: room.turn.held,
@@ -335,6 +337,7 @@ function registerGameHandlers(io) {
         timerSeconds: 60,
         turnStartedAt: null,
         chatMessages: [],
+        achievements: [],
         finishedAt: null,
       };
 
@@ -767,6 +770,17 @@ function registerGameHandlers(io) {
       }
 
       player.scores[category] = calculateCategoryScore(category, room.turn.dice);
+
+      // Detect achievements
+      const newAchievements = detectNewAchievements(player, category, room.turn.dice, room.turn.rollsUsed, room.achievements || []);
+      if (newAchievements.length > 0) {
+        if (!room.achievements) room.achievements = [];
+        room.achievements.push(...newAchievements);
+        // Broadcast new achievements to all
+        for (const a of newAchievements) {
+          io.to(room.code).emit("achievement:earned", a);
+        }
+      }
 
       sendAck(ack, { ok: true });
       advanceTurn(io, room);
