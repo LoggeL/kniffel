@@ -1251,54 +1251,76 @@ export function KniffelApp() {
         )}
 
         {!room && (
-          <section className="mx-auto grid w-full max-w-3xl gap-4 rounded-[28px] border-2 border-[#2a4f89]/70 bg-[#f6ecd6]/90 p-5 shadow-[0_28px_60px_-46px_rgba(15,23,42,0.95)] backdrop-blur sm:p-8">
-            <div className="sm:col-span-2">
-              <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-[#315e99]" htmlFor="name-input">
-                Dein Name
-              </label>
-              <input
-                id="name-input"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                maxLength={24}
-                placeholder="z. B. Mia"
-                className="w-full border-0 border-b-2 border-[#2a4f89]/55 bg-transparent px-1 py-2 text-lg text-[#123f84] outline-none transition placeholder:text-[#6481ad] focus:border-[#123f84]"
-              />
+          <section className="mx-auto flex w-full max-w-4xl flex-col gap-6">
+            {/* Player Setup */}
+            <div className="rounded-[28px] border-2 border-[#2a4f89]/70 bg-[#f6ecd6]/90 p-5 shadow-[0_28px_60px_-46px_rgba(15,23,42,0.95)] backdrop-blur sm:p-8">
+              <div className="mb-5">
+                <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-[#315e99]" htmlFor="name-input">
+                  Dein Name
+                </label>
+                <input
+                  id="name-input"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  maxLength={24}
+                  placeholder="z. B. Mia"
+                  className="w-full border-0 border-b-2 border-[#2a4f89]/55 bg-transparent px-1 py-2 text-lg text-[#123f84] outline-none transition placeholder:text-[#6481ad] focus:border-[#123f84]"
+                />
+              </div>
+              <IconPicker selected={selectedIcon} onSelect={handleSelectIcon} />
             </div>
 
-            <IconPicker selected={selectedIcon} onSelect={handleSelectIcon} />
-
-            <div className="grid gap-4">
-              <button
-                type="button"
-                onClick={handleCreateRoom}
-                className="rounded-md border border-[#2a4f89]/70 bg-[#e6d8ba] px-4 py-3 font-semibold uppercase tracking-[0.08em] text-[#123f84] transition hover:bg-[#ddcfaf]"
-              >
-                Raum erstellen
-              </button>
-
-              <div className="flex gap-3 items-end">
-                <input
-                  value={codeInput}
-                  onChange={(e) => setCodeInput(e.target.value.toUpperCase())}
-                  maxLength={6}
-                  placeholder="Code"
-                  className="w-full border-0 border-b-2 border-[#2a4f89]/55 bg-transparent px-1 py-2 text-lg uppercase tracking-[0.2em] text-[#123f84] outline-none transition placeholder:tracking-normal placeholder:text-[#6481ad] focus:border-[#123f84]"
-                />
+            {/* Action Cards */}
+            <div className="grid gap-5 sm:grid-cols-2">
+              {/* Create Room */}
+              <div className="rounded-[24px] border-2 border-[#2a4f89]/70 bg-[#f6ecd6]/90 p-6 shadow-[0_18px_40px_-30px_rgba(15,23,42,0.85)] backdrop-blur">
+                <div className="mb-4 flex items-center gap-3">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#e6d8ba] text-xl">🎲</span>
+                  <div>
+                    <h3 className="text-lg font-semibold text-[#123f84]">Neues Spiel</h3>
+                    <p className="text-xs text-[#5a7aad]">Erstelle einen Raum und lade Freunde ein</p>
+                  </div>
+                </div>
                 <button
                   type="button"
-                  onClick={handleJoinRoom}
-                  className="rounded-md border border-[#2a4f89]/70 bg-[#dde7f7] px-4 py-3 font-semibold uppercase tracking-[0.08em] text-[#123f84] transition hover:bg-[#cfddf4]"
+                  onClick={handleCreateRoom}
+                  className="w-full rounded-xl border-2 border-[#2a4f89]/60 bg-[#123f84] px-4 py-3.5 font-semibold uppercase tracking-[0.08em] text-white shadow-md transition hover:bg-[#1a4f9a] active:scale-[0.98]"
                 >
-                  Join
+                  Raum erstellen
                 </button>
+              </div>
+
+              {/* Join Room */}
+              <div className="rounded-[24px] border-2 border-[#2a4f89]/70 bg-[#f6ecd6]/90 p-6 shadow-[0_18px_40px_-30px_rgba(15,23,42,0.85)] backdrop-blur">
+                <div className="mb-4 flex items-center gap-3">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#dde7f7] text-xl">🤝</span>
+                  <div>
+                    <h3 className="text-lg font-semibold text-[#123f84]">Beitreten</h3>
+                    <p className="text-xs text-[#5a7aad]">Mit Raumcode einem Spiel beitreten</p>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    value={codeInput}
+                    onChange={(e) => setCodeInput(e.target.value.toUpperCase())}
+                    maxLength={6}
+                    placeholder="CODE"
+                    className="flex-1 rounded-xl border-2 border-[#2a4f89]/40 bg-[#f8eed8] px-4 py-3 text-center text-lg font-mono uppercase tracking-[0.25em] text-[#123f84] outline-none transition placeholder:text-[#6481ad]/50 focus:border-[#123f84]"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleJoinRoom}
+                    className="rounded-xl border-2 border-[#2a4f89]/60 bg-[#dde7f7] px-5 py-3 font-semibold uppercase tracking-[0.08em] text-[#123f84] transition hover:bg-[#cfddf4] active:scale-[0.98]"
+                  >
+                    Join
+                  </button>
+                </div>
                 <button
                   type="button"
                   onClick={handleSpectate}
-                  className="rounded-md border border-[#2a4f89]/70 bg-[#f0e4c8] px-4 py-3 font-semibold text-[#123f84] transition hover:bg-[#e4d5b6]"
-                  title="Als Zuschauer beitreten"
+                  className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-[#2a4f89]/30 bg-transparent px-4 py-2 text-sm text-[#5a7aad] transition hover:bg-[#ece0c5]"
                 >
-                  👁
+                  <span>👁</span> Als Zuschauer beitreten
                 </button>
               </div>
             </div>
