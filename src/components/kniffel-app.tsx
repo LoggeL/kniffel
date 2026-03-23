@@ -16,9 +16,12 @@ import type {
   ChatMessage,
   PlayerState,
   RoomState,
+  ScoreActivity,
 } from "@/lib/types";
 import { ACHIEVEMENT_DEFS } from "@/lib/types";
-import { DiceBox } from "@/components/dice-box";
+import dynamic from "next/dynamic";
+
+const DiceBox3D = dynamic(() => import("@/components/dice-box-3d").then((m) => ({ default: m.DiceBox3D })), { ssr: false });
 import {
   playDiceRoll,
   playDiceLand,
@@ -285,22 +288,6 @@ function IconPicker({ selected, onSelect }: { selected: string | null; onSelect:
   );
 }
 
-// --- Blurred Score ---
-function BlurredScore({ value }: { value: number }) {
-  const [revealed, setRevealed] = useState(false);
-  return (
-    <span
-      onClick={() => setRevealed(!revealed)}
-      onMouseEnter={() => setRevealed(true)}
-      onMouseLeave={() => setRevealed(false)}
-      className="cursor-pointer select-none transition-all duration-300"
-      style={{ filter: revealed ? "none" : "blur(8px)", opacity: revealed ? 1 : 0.7 }}
-      title="Klick zum Aufdecken"
-    >
-      {value}
-    </span>
-  );
-}
 
 // --- Achievement Toast ---
 function AchievementToast({ achievement, onDone }: { achievement: Achievement; onDone: () => void }) {
@@ -321,6 +308,33 @@ function AchievementToast({ achievement, onDone }: { achievement: Achievement; o
         <div className="text-sm font-bold text-[#123f84]">{achievement.label}</div>
         <div className="text-xs text-[#315e99]">{achievement.description}</div>
       </div>
+    </motion.div>
+  );
+}
+
+// --- Score Activity Toast ---
+function ScoreActivityToast({ activity, onDone }: { activity: ScoreActivity; onDone: () => void }) {
+  useEffect(() => {
+    const t = setTimeout(onDone, 3000);
+    return () => clearTimeout(t);
+  }, [onDone]);
+
+  return (
+    <motion.div
+      initial={{ y: 60, opacity: 0, scale: 0.9 }}
+      animate={{ y: 0, opacity: 1, scale: 1 }}
+      exit={{ y: 60, opacity: 0, scale: 0.9 }}
+      className="flex items-center gap-2 rounded-xl border border-[#2a4f89]/50 bg-[#f5ebd5]/95 px-4 py-2.5 shadow-lg backdrop-blur"
+    >
+      <span className="text-lg">{"\ud83c\udfb2"}</span>
+      <span className="text-sm text-[#123f84]">
+        <span className="font-bold" style={{ color: activity.playerColor }}>{activity.playerName}</span>
+        {" hat "}
+        <span className="font-semibold">{activity.categoryLabel}</span>
+        {" ("}
+        <span className="font-bold">{activity.score}</span>
+        {") eingetragen"}
+      </span>
     </motion.div>
   );
 }
@@ -615,6 +629,9 @@ export function KniffelApp() {
   const [achievements, setAchievements] = useState<Achievement[]>([]);
   const [achievementToasts, setAchievementToasts] = useState<Achievement[]>([]);
 
+  // Score activity feed
+  const [scoreActivities, setScoreActivities] = useState<ScoreActivity[]>([]);
+
   // Mobile scorecard: selected player tab
   const [mobileScorePlayer, setMobileScorePlayer] = useState<string | null>(null);
 
@@ -730,6 +747,27 @@ export function KniffelApp() {
       setAchievementToasts((prev) => [...prev, a]);
     };
     socket.on("achievement:earned", onAchievement);
+    const onScoreActivity = (activity: ScoreActivity) => {
+      // Only show to other players (not the one who scored)
+      if (activity.playerId === savedClientId) return;
+      setScoreActivities((prev) => [...prev.slice(-1), activity]);
+      setTimeout(() => {
+        setScoreActivities((prev) => prev.filter((a) => a.id !== activity.id));
+      }, 3500);
+    };
+    socket.on("score:activity", onScoreActivity);
+    const onKicked = () => {
+      setError("Du wurdest aus dem Raum entfernt.");
+      localStorage.removeItem(ROOM_CODE_KEY);
+      setRoom(null);
+      setFloatingReactions([]);
+      setAchievements([]);
+      setIsSpectator(false);
+      const url = new URL(window.location.href);
+      url.searchParams.delete("room");
+      window.history.replaceState({}, "", url.toString());
+    };
+    socket.on("room:kicked", onKicked);
     socket.connect();
 
     return () => {
@@ -739,6 +777,8 @@ export function KniffelApp() {
       socket.off("action:error", onActionError);
       socket.off("chat:message", onChatMessage);
       socket.off("achievement:earned", onAchievement);
+      socket.off("score:activity", onScoreActivity);
+      socket.off("room:kicked", onKicked);
     };
   }, [socket, searchParams]);
 
@@ -1372,9 +1412,25 @@ export function KniffelApp() {
                             <span className="rounded-full border border-[#2a4f89]/45 bg-[#e7dbc0] px-2 py-0.5 text-xs text-[#123f84]">Du</span>
                           )}
                         </div>
-                        <span className={["text-xs", player.connected ? "text-[#1f5aab]" : "text-[#6f86ad]"].join(" ")}>
-                          {player.connected ? "online" : "offline"}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className={["text-xs", player.connected ? "text-[#1f5aab]" : "text-[#6f86ad]"].join(" ")}>
+                            {player.connected ? "online" : "offline"}
+                          </span>
+                          {isHost && player.id !== clientId && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                socket.emit("room:kick", { code: room.code, playerId: player.id }, (ack: AckResponse) => {
+                                  if (!ack?.ok) setError(ack?.error || "Spieler konnte nicht entfernt werden.");
+                                });
+                              }}
+                              className="flex h-6 w-6 items-center justify-center rounded-full bg-[#e74c3c]/15 text-xs font-bold text-[#e74c3c] transition hover:bg-[#e74c3c]/30 active:scale-90"
+                              title="Spieler entfernen"
+                            >
+                              ✕
+                            </button>
+                          )}
+                        </div>
                       </li>
                     ))}
                   </ul>
@@ -1484,7 +1540,7 @@ export function KniffelApp() {
                     <TimerBar turnStartedAt={room.turnStartedAt} timerSeconds={room.timerSeconds} />
                   )}
 
-                  <DiceBox
+                  <DiceBox3D
                     dice={room.turn.dice}
                     held={room.turn.held}
                     disabled={!isMyTurn || room.turn.rollsUsed === 0 || room.status !== "playing"}
@@ -1560,6 +1616,14 @@ export function KniffelApp() {
                                   {player.icon && <span className="text-sm">{player.icon}</span>}
                                   {player.name}
                                   {!player.connected && <span className="text-[10px] text-[#e74c3c]">⚡</span>}
+                                  {isHost && player.id !== clientId && room.status === "playing" && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => { e.stopPropagation(); socket.emit("room:kick", { code: room.code, playerId: player.id }); }}
+                                      className="text-[10px] text-[#e74c3c] hover:text-[#c0392b] ml-0.5"
+                                      title="Kicken"
+                                    >✕</button>
+                                  )}
                                 </span>
                                 {achievements.filter(a => a.playerId === player.id).length > 0 && (
                                   <span className="flex items-center justify-center gap-0.5 mt-0.5 text-xs">
@@ -1674,7 +1738,7 @@ export function KniffelApp() {
                             </td>
                             {room.players.map((player) => (
                               <td key={`${player.id}-total`} className={["border-2 border-[#2a4f89]/80 px-3 py-2 text-center text-base font-extrabold text-[#0f366f]", room.currentPlayerId === player.id ? "bg-[#cdddf4]" : "bg-[#e7d5b2]"].join(" ")}>
-                                {isSpectator ? player.total : <BlurredScore value={player.total} />}
+                                {player.total}
                               </td>
                             ))}
                           </tr>
@@ -1705,6 +1769,19 @@ export function KniffelApp() {
               key={`${a.type}-${a.playerId}-${i}`}
               achievement={a}
               onDone={() => setAchievementToasts((prev) => prev.filter((_, j) => j !== i))}
+            />
+          ))}
+        </AnimatePresence>
+      </div>
+
+      {/* Score activity toasts */}
+      <div className="fixed bottom-20 left-1/2 z-[65] flex -translate-x-1/2 flex-col gap-2">
+        <AnimatePresence>
+          {scoreActivities.map((a) => (
+            <ScoreActivityToast
+              key={a.id}
+              activity={a}
+              onDone={() => setScoreActivities((prev) => prev.filter((x) => x.id !== a.id))}
             />
           ))}
         </AnimatePresence>

@@ -1,7 +1,13 @@
 const { CATEGORIES, createEmptyScores } = require("./constants");
 const { calculateCategoryScore, getScoreSummary } = require("./scoring");
 const { saveRoom, loadActiveRooms, cleanupFinished, deleteRoom } = require("./db");
-const { detectNewAchievements } = require("./achievements");
+const { detectNewAchievements, detectGameEndAchievements, updatePlayerStats, ensurePlayerStats } = require("./achievements");
+
+const CATEGORY_LABELS = {
+  ones: "Einser", twos: "Zweier", threes: "Dreier", fours: "Vierer", fives: "F\u00fcnfer", sixes: "Sechser",
+  threeOfAKind: "Dreierpasch", fourOfAKind: "Viererpasch", fullHouse: "Full House",
+  smallStraight: "Kleine Stra\u00dfe", largeStraight: "Gro\u00dfe Stra\u00dfe", yahtzee: "Kniffel", chance: "Chance",
+};
 
 const rooms = new Map();
 const turnTimers = new Map();
@@ -214,6 +220,16 @@ function advanceTurn(io, room) {
     room.status = "finished";
     room.winnerIds = getWinnerIds(room);
     room.finishedAt = Date.now();
+
+    // Detect game-end achievements
+    const endAchievements = detectGameEndAchievements(room);
+    if (endAchievements.length > 0) {
+      if (!room.achievements) room.achievements = [];
+      room.achievements.push(...endAchievements);
+      for (const a of endAchievements) {
+        io.to(room.code).emit("achievement:earned", a);
+      }
+    }
   } else {
     room.turnIndex = (room.turnIndex + 1) % room.players.length;
     room.turn = makeTurnState();
@@ -339,6 +355,8 @@ function registerGameHandlers(io) {
         chatMessages: [],
         achievements: [],
         finishedAt: null,
+        gameStartedAt: null,
+        playerStats: {},
       };
 
       rooms.set(code, room);
@@ -526,6 +544,20 @@ function registerGameHandlers(io) {
       const index = room.players.findIndex((p) => p.id === playerId);
       if (index === -1) { sendError(socket, ack, "Spieler wurde im Raum nicht gefunden."); return; }
 
+      // During a game: just mark as disconnected, don't remove from scoreboard
+      if (room.status === "playing" || room.status === "finished") {
+        const player = room.players[index];
+        player.connected = false;
+        player.socketId = null;
+        socket.leave(room.code);
+        socket.data.roomCode = undefined;
+        persistRoom(room);
+        sendAck(ack, { ok: true });
+        emitRoomUpdate(io, room.code);
+        return;
+      }
+
+      // In lobby: actually remove the player
       room.players.splice(index, 1);
       socket.leave(room.code);
       socket.data.roomCode = undefined;
@@ -592,6 +624,55 @@ function registerGameHandlers(io) {
       emitRoomUpdate(io, room.code);
     });
 
+    // --- ROOM:KICK ---
+    socket.on("room:kick", (payload = {}, ack) => {
+      const code = normalizeCode(payload.code || socket.data.roomCode);
+      const room = getRoom(code);
+
+      if (!room) { sendError(socket, ack, "Raum wurde nicht gefunden."); return; }
+      // Allow kick in lobby and during game
+
+      const player = ensureActor(socket, room, ack);
+      if (!player) return;
+      if (room.hostId !== player.id) { sendError(socket, ack, "Nur der Host kann Spieler kicken."); return; }
+
+      const targetId = String(payload.playerId || "");
+      if (targetId === player.id) { sendError(socket, ack, "Du kannst dich nicht selbst kicken."); return; }
+
+      const targetIndex = room.players.findIndex((p) => p.id === targetId);
+      if (targetIndex === -1) { sendError(socket, ack, "Spieler nicht gefunden."); return; }
+
+      const target = room.players[targetIndex];
+
+      // Notify the kicked player
+      if (target.socketId) {
+        const kickedSocket = io.sockets.sockets.get(target.socketId);
+        if (kickedSocket) {
+          kickedSocket.emit("room:kicked", { message: "Du wurdest aus dem Raum entfernt." });
+          kickedSocket.leave(room.code);
+          kickedSocket.data.roomCode = undefined;
+        }
+      }
+
+      if (room.status === "lobby") {
+        // In lobby: remove completely
+        room.players.splice(targetIndex, 1);
+      } else {
+        // During game: mark as kicked (stays in scoreboard)
+        target.connected = false;
+        target.socketId = null;
+        target.kicked = true;
+        // If it was their turn, advance
+        if (room.players[room.turnIndex]?.id === targetId) {
+          advanceTurn(io, room);
+        }
+      }
+
+      persistRoom(room);
+      sendAck(ack, { ok: true });
+      emitRoomUpdate(io, room.code);
+    });
+
     // --- GAME:START ---
     socket.on("game:start", (payload = {}, ack) => {
       const code = normalizeCode(payload.code || socket.data.roomCode);
@@ -625,6 +706,9 @@ function registerGameHandlers(io) {
       room.winnerIds = [];
       room.turnStartedAt = null;
       room.finishedAt = null;
+      room.gameStartedAt = Date.now();
+      room.playerStats = {};
+      for (const p of room.players) ensurePlayerStats(room, p.id);
 
       startTurnTimer(io, room);
       persistRoom(room);
@@ -662,6 +746,9 @@ function registerGameHandlers(io) {
       room.winnerIds = [];
       room.turnStartedAt = null;
       room.finishedAt = null;
+      room.gameStartedAt = Date.now();
+      room.playerStats = {};
+      for (const p of room.players) ensurePlayerStats(room, p.id);
 
       startTurnTimer(io, room);
       persistRoom(room);
@@ -769,18 +856,33 @@ function registerGameHandlers(io) {
         return;
       }
 
-      player.scores[category] = calculateCategoryScore(category, room.turn.dice);
+      const scoredValue = calculateCategoryScore(category, room.turn.dice);
+      player.scores[category] = scoredValue;
+
+      // Update player stats for achievement tracking
+      updatePlayerStats(room, player, room.turn.rollsUsed);
 
       // Detect achievements
-      const newAchievements = detectNewAchievements(player, category, room.turn.dice, room.turn.rollsUsed, room.achievements || []);
+      const newAchievements = detectNewAchievements(player, category, room.turn.dice, room.turn.rollsUsed, room.achievements || [], room);
       if (newAchievements.length > 0) {
         if (!room.achievements) room.achievements = [];
         room.achievements.push(...newAchievements);
-        // Broadcast new achievements to all
         for (const a of newAchievements) {
           io.to(room.code).emit("achievement:earned", a);
         }
       }
+
+      // Emit score activity to other players
+      io.to(room.code).emit("score:activity", {
+        playerName: player.name,
+        playerColor: player.color,
+        playerIcon: player.icon || null,
+        category,
+        categoryLabel: CATEGORY_LABELS[category] || category,
+        score: scoredValue,
+        playerId: player.id,
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      });
 
       sendAck(ack, { ok: true });
       advanceTurn(io, room);
