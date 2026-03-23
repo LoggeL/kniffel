@@ -366,8 +366,9 @@ export function DiceBox3D({
               camera.lookAt(0, 0, 0);
             }}
           >
-            <ambientLight intensity={0.6} />
-            <directionalLight position={[4, 6, 3]} intensity={0.9} castShadow={false} />
+            <ambientLight intensity={1.8} />
+            <directionalLight position={[4, 8, 3]} intensity={1.2} />
+            <directionalLight position={[-3, 4, -2]} intensity={0.6} />
 
             {dice.map((value, index) => (
               <Die3D
