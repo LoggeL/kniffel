@@ -359,7 +359,7 @@ export function DiceBox3D({
       >
         {mounted && (
           <Canvas
-            camera={{ position: [0, 4, 5], fov: 50 }}
+            camera={{ position: [0, 7, 3], fov: 45 }}
             gl={{ alpha: true, antialias: true }}
             style={{ background: "transparent" }}
             onCreated={({ camera }) => {
