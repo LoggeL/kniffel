@@ -124,7 +124,7 @@ function dotsFor3DFace(
 }
 
 /** Shared sphere geometry for all dots (created once). */
-const dotGeometry = new THREE.SphereGeometry(DOT_RADIUS, 12, 8);
+const dotGeometry = new THREE.CylinderGeometry(DOT_RADIUS, DOT_RADIUS, 0.01, 16);
 
 /* ------------------------------------------------------------------ */
 /*  Die3D – individual 3D die                                          */
@@ -242,8 +242,8 @@ function Die3D({
   }, [disabled, index, onToggleHold]);
 
   // Materials
-  const bodyColor = held ? "#c4d6f5" : "#f5f0e5";
-  const dotColor = held ? "#1a3a6e" : "#333333";
+  const bodyColor = held ? "#e8f0ff" : "#ffffff";
+  const dotColor = held ? "#1a1a3a" : "#111111";
 
   // Pre-compute all face dots
   const allDots = useMemo(() => {
@@ -263,7 +263,7 @@ function Die3D({
     <group ref={groupRef} position={[positionX, 0, 0]} onClick={handleClick}>
       {/* Die body */}
       <RoundedBox args={[1, 1, 1]} radius={0.12} smoothness={4}>
-        <meshStandardMaterial color={bodyColor} roughness={0.35} metalness={0.05} />
+        <meshStandardMaterial color={bodyColor} roughness={0.25} metalness={0} />
       </RoundedBox>
 
       {/* Held glow */}
@@ -280,11 +280,18 @@ function Die3D({
       )}
 
       {/* Dots on all 6 faces */}
-      {allDots.map(({ pos, key }) => (
-        <mesh key={key} geometry={dotGeometry} position={pos}>
-          <meshStandardMaterial color={dotColor} roughness={0.6} metalness={0.1} />
-        </mesh>
-      ))}
+      {allDots.map(({ pos, key }) => {
+        // Rotate cylinder to face outward based on position
+        let rot: [number, number, number] = [0, 0, 0];
+        if (Math.abs(pos[1]) > 0.5) rot = [0, 0, 0]; // Y faces — cylinder default
+        else if (Math.abs(pos[2]) > 0.5) rot = [Math.PI/2, 0, 0]; // Z faces
+        else if (Math.abs(pos[0]) > 0.5) rot = [0, 0, Math.PI/2]; // X faces
+        return (
+          <mesh key={key} geometry={dotGeometry} position={pos} rotation={rot}>
+            <meshBasicMaterial color={dotColor} />
+          </mesh>
+        );
+      })}
 
       {/* Emoji overlay when not yet rolled */}
       {showEmoji && (
