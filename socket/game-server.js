@@ -662,6 +662,12 @@ function registerGameHandlers(io) {
         target.connected = false;
         target.socketId = null;
         target.kicked = true;
+        // Zero out all unfilled scores for kicked player
+        for (const cat of CATEGORIES) {
+          if (typeof target.scores[cat] !== "number") {
+            target.scores[cat] = 0;
+          }
+        }
         // If it was their turn, advance
         if (room.players[room.turnIndex]?.id === targetId) {
           advanceTurn(io, room);
@@ -886,6 +892,39 @@ function registerGameHandlers(io) {
 
       sendAck(ack, { ok: true });
       advanceTurn(io, room);
+    });
+
+    // --- ROOM:RENAME ---
+    socket.on("room:rename", (payload = {}, ack) => {
+      const code = normalizeCode(payload.code || socket.data.roomCode);
+      const room = getRoom(code);
+      if (!room) { sendError(socket, ack, "Raum nicht gefunden."); return; }
+      if (room.status !== "lobby") { sendError(socket, ack, "Namensänderung nur in der Lobby möglich."); return; }
+
+      const player = ensureActor(socket, room, ack);
+      if (!player) return;
+
+      const newName = normalizeName(payload.name);
+      if (!newName) { sendError(socket, ack, "Ungültiger Name."); return; }
+
+      player.name = newName;
+      persistRoom(room);
+      sendAck(ack, { ok: true });
+      emitRoomUpdate(io, room.code);
+    });
+
+    // --- GAME:NUDGE ---
+    socket.on("game:nudge", (payload = {}, ack) => {
+      const code = normalizeCode(payload.code || socket.data.roomCode);
+      const room = getRoom(code);
+      if (!room) { sendError(socket, ack, "Raum nicht gefunden."); return; }
+
+      const player = ensureActor(socket, room, ack);
+      if (!player) return;
+
+      // Broadcast nudge to everyone in the room
+      io.to(code).emit("game:nudge", { fromId: player.id, fromName: player.name });
+      sendAck(ack, { ok: true });
     });
 
     // --- CHAT:SEND ---

@@ -257,6 +257,30 @@ export function playChatPop(): void {
   }
 }
 
+export function playNudge(): void {
+  try {
+    const ctx = getCtx();
+    const now = ctx.currentTime;
+    // Three rapid descending pings
+    const freqs = [880, 660, 440];
+    freqs.forEach((freq, i) => {
+      const t = now + i * 0.1;
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(freq, t);
+      osc.frequency.exponentialRampToValueAtTime(freq * 0.8, t + 0.15);
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.2, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.2);
+    });
+  } catch {
+    // Audio not available
+  }
+}
+
 export function playYourTurn(): void {
   try {
     const ctx = getCtx();

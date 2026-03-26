@@ -31,6 +31,7 @@ import {
   playPlacementReveal,
   playChatPop,
   playYourTurn,
+  playNudge,
 } from "@/lib/sounds";
 
 const CLIENT_ID_KEY = "kniffel-client-id";
@@ -376,7 +377,7 @@ interface FloatingReaction {
   spawnX: number;
 }
 
-const REACTION_EMOJIS = ["👏", "😂", "🤬", "🎉", "🔥", "💀", "😤", "🥳", "❓"];
+const REACTION_EMOJIS = ["👏", "😂", "🤬", "🎉", "🔥", "💀", "😤", "🖕", "❓"];
 
 function ReactionBar({
   onReact,
@@ -635,6 +636,15 @@ export function KniffelApp() {
   // Mobile scorecard: selected player tab
   const [mobileScorePlayer, setMobileScorePlayer] = useState<string | null>(null);
 
+  // Rename state (lobby)
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+
+  // Nudge state
+  const [nudgeVisible, setNudgeVisible] = useState(false);
+  const nudgeCooldownRef = useRef<boolean>(false);
+  const nudgeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Track previous rollSequence to keep dice in place after scoring
   const prevRollSeqRef = useRef(0);
   const [displayRollSeq, setDisplayRollSeq] = useState(0);
@@ -768,6 +778,8 @@ export function KniffelApp() {
       window.history.replaceState({}, "", url.toString());
     };
     socket.on("room:kicked", onKicked);
+    const onNudge = () => { playNudge(); };
+    socket.on("game:nudge", onNudge);
     socket.connect();
 
     return () => {
@@ -779,6 +791,7 @@ export function KniffelApp() {
       socket.off("achievement:earned", onAchievement);
       socket.off("score:activity", onScoreActivity);
       socket.off("room:kicked", onKicked);
+      socket.off("game:nudge", onNudge);
     };
   }, [socket, searchParams]);
 
@@ -807,6 +820,16 @@ export function KniffelApp() {
     }
     prevMyTurn.current = isMyTurn;
   }, [isMyTurn]);
+
+  // Nudge timer: show nudge button after 15s if current player hasn't rolled
+  useEffect(() => {
+    if (nudgeTimerRef.current) clearTimeout(nudgeTimerRef.current);
+    setNudgeVisible(false);
+    if (!room || room.status !== "playing" || !currentPlayer || isMyTurn) return;
+    if (room.turn.rollsUsed > 0) return; // already rolled, no nudge
+    nudgeTimerRef.current = setTimeout(() => setNudgeVisible(true), 15000);
+    return () => { if (nudgeTimerRef.current) clearTimeout(nudgeTimerRef.current); };
+  }, [room?.currentPlayerId, room?.turn.rollsUsed, room?.status, isMyTurn]);
 
   const scorePreview = useMemo(() => {
     const preview: Partial<Record<Category, number>> = {};
@@ -900,6 +923,24 @@ export function KniffelApp() {
         setIsSpectator(true);
       }
     );
+  };
+
+  const handleRename = (newName: string) => {
+    if (!room) return;
+    const trimmed = newName.trim().slice(0, 24);
+    if (!trimmed) { setRenamingId(null); return; }
+    socket.emit("room:rename", { code: room.code, name: trimmed }, (ack: AckResponse) => {
+      if (!ack?.ok) setError(ack?.error || "Namensänderung fehlgeschlagen.");
+    });
+    setRenamingId(null);
+  };
+
+  const handleNudge = () => {
+    if (!room || nudgeCooldownRef.current) return;
+    nudgeCooldownRef.current = true;
+    playNudge();
+    socket.emit("game:nudge", { code: room.code });
+    setTimeout(() => { nudgeCooldownRef.current = false; }, 2000);
   };
 
   const handleLeaveRoom = () => {
@@ -1401,14 +1442,30 @@ export function KniffelApp() {
                       <li key={player.id} className="flex items-center justify-between rounded-md border border-[#2a4f89]/45 bg-[#efe1c2] px-3 py-2">
                         <div className="flex items-center gap-2">
                           {player.icon && <span className="text-lg">{player.icon}</span>}
-                          <span className="flex items-center gap-2 font-medium text-[#123f84]">
-                            <span className="inline-block h-3 w-3 rounded-full" style={{ backgroundColor: player.color || "#999" }} />
-                            {player.name}
-                          </span>
+                          {renamingId === player.id ? (
+                            <input
+                              autoFocus
+                              className="rounded border border-[#2a4f89]/50 bg-white px-2 py-0.5 text-sm text-[#123f84] outline-none"
+                              value={renameValue}
+                              onChange={(e) => setRenameValue(e.target.value)}
+                              onKeyDown={(e) => { if (e.key === "Enter") handleRename(renameValue); if (e.key === "Escape") setRenamingId(null); }}
+                              onBlur={() => handleRename(renameValue)}
+                              maxLength={24}
+                            />
+                          ) : (
+                            <span
+                              className="flex items-center gap-2 font-medium text-[#123f84]"
+                              onDoubleClick={() => { if (player.id === clientId) { setRenamingId(player.id); setRenameValue(player.name); } }}
+                              title={player.id === clientId ? "Doppelklick zum Umbenennen" : undefined}
+                            >
+                              <span className="inline-block h-3 w-3 rounded-full" style={{ backgroundColor: player.color || "#999" }} />
+                              {player.name}
+                            </span>
+                          )}
                           {player.id === room.hostId && (
                             <span className="rounded-full border border-[#2a4f89]/45 bg-[#d7e5fb] px-2 py-0.5 text-xs text-[#123f84]">Host</span>
                           )}
-                          {player.id === clientId && (
+                          {player.id === clientId && renamingId !== player.id && (
                             <span className="rounded-full border border-[#2a4f89]/45 bg-[#e7dbc0] px-2 py-0.5 text-xs text-[#123f84]">Du</span>
                           )}
                         </div>
@@ -1551,24 +1608,36 @@ export function KniffelApp() {
                   />
 
                   {!isSpectator && (
-                    <button
-                      type="button"
-                      onClick={handleRoll}
-                      disabled={!canRoll || room.status !== "playing"}
-                      className={[
-                        "mt-4 w-full rounded-md border px-4 py-3 font-bold uppercase tracking-[0.08em] transition",
-                        canRoll && room.status === "playing"
-                          ? "cursor-pointer hover:brightness-95 active:scale-[0.98]"
-                          : "cursor-not-allowed border-[#7f92b3]/45 bg-[#e6dcc5]/70 text-[#7f92b3]",
-                      ].join(" ")}
-                      style={
-                        canRoll && room.status === "playing"
-                          ? { borderColor: activeColor || "#1f4d90", backgroundColor: activeColor || "#1f4d90", color: "#ffffff" }
-                          : undefined
-                      }
-                    >
-                      Würfeln
-                    </button>
+                    <div className="mt-4 flex gap-2">
+                      <button
+                        type="button"
+                        onClick={handleRoll}
+                        disabled={!canRoll || room.status !== "playing"}
+                        className={[
+                          "flex-1 rounded-md border px-4 py-3 font-bold uppercase tracking-[0.08em] transition",
+                          canRoll && room.status === "playing"
+                            ? "cursor-pointer hover:brightness-95 active:scale-[0.98]"
+                            : "cursor-not-allowed border-[#7f92b3]/45 bg-[#e6dcc5]/70 text-[#7f92b3]",
+                        ].join(" ")}
+                        style={
+                          canRoll && room.status === "playing"
+                            ? { borderColor: activeColor || "#1f4d90", backgroundColor: activeColor || "#1f4d90", color: "#ffffff" }
+                            : undefined
+                        }
+                      >
+                        Würfeln
+                      </button>
+                      {nudgeVisible && !isMyTurn && (
+                        <button
+                          type="button"
+                          onClick={handleNudge}
+                          className="rounded-md border border-[#e67e22]/60 bg-[#fef3e2] px-3 py-3 text-lg transition hover:bg-[#fde8c0] active:scale-95"
+                          title={`${currentPlayer?.name} antupfen`}
+                        >
+                          👋
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
 
